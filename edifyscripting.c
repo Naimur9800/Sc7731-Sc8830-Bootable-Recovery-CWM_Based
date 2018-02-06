@@ -40,11 +40,12 @@
 #include "edify/expr.h"
 #include "edifyscripting.h"
 #include "extendedcommands.h"
+#include "firmware.h"
 #include "flashutils/flashutils.h"
 #include "install.h"
-#include "minuictr/minui.h"
+#include "minui/minui.h"
 #include "minzip/DirUtil.h"
-#include "mtdutils/mounts.h"
+#include "mounts.h"
 #include "mmcutils/mmcutils.h"
 #include "mtdutils/mtdutils.h"
 #include "nandroid.h"
@@ -195,35 +196,32 @@ Value* RestoreFn(const char* name, State* state, int argc, Expr* argv[]) {
     args2[argc] = NULL;
     
     char* path = strdup(args2[0]);
-    int restoreboot = 1;
-    int restoresystem = 1;
-    int restoredata = 1;
-    int restorecache = 1;
-    int restoresdext = 1;
+    unsigned char flags = NANDROID_BOOT | NANDROID_SYSTEM | NANDROID_DATA
+                          | NANDROID_CACHE | NANDROID_SDEXT;
     int i;
     for (i = 1; i < argc; i++)
     {
         if (args2[i] == NULL)
             continue;
         if (strcmp(args2[i], "noboot") == 0)
-            restoreboot = 0;
+            flags ^= NANDROID_BOOT;
         else if (strcmp(args2[i], "nosystem") == 0)
-            restoresystem = 0;
+            flags ^= NANDROID_SYSTEM;
         else if (strcmp(args2[i], "nodata") == 0)
-            restoredata = 0;
+            flags ^= NANDROID_DATA;
         else if (strcmp(args2[i], "nocache") == 0)
-            restorecache = 0;
+            flags ^= NANDROID_CACHE;
         else if (strcmp(args2[i], "nosd-ext") == 0)
-            restoresdext = 0;
+            flags ^= NANDROID_SDEXT;
     }
-    
+
     for (i = 0; i < argc; ++i) {
         free(args[i]);
     }
     free(args);
     free(args2);
 
-    if (0 != nandroid_restore(path, restoreboot, restoresystem, restoredata, restorecache, restoresdext, 0)) {
+    if (0 != nandroid_restore(path, flags)) {
         free(path);
         return StringValue(strdup(""));
     }
@@ -241,7 +239,7 @@ Value* InstallZipFn(const char* name, State* state, int argc, Expr* argv[]) {
         return NULL;
     }
     
-    if (install_zip(path) != INSTALL_SUCCESS)
+    if (0 != install_zip(path))
         return StringValue(strdup(""));
     
     return StringValue(strdup(path));
@@ -263,7 +261,7 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
     return StringValue(strdup(path));
 }
 
-void RegisterRecoveryHooks() {
+static void RegisterRecoveryHooks() {
     RegisterFunction("mount", MountFn);
     RegisterFunction("format", FormatFn);
     RegisterFunction("ui_print", UIPrintFn);
@@ -274,8 +272,7 @@ void RegisterRecoveryHooks() {
 }
 
 static int hasInitializedEdify = 0;
-int run_script_from_buffer(char* script_data, int script_len, char* filename)
-{
+static int run_script_from_buffer(char* script_data, int script_len, char* filename) {
     if (!hasInitializedEdify) {
         RegisterBuiltins();
         RegisterRecoveryHooks();
@@ -362,7 +359,7 @@ int edify_main(int argc, char** argv) {
     return 0;
 }
 
-int run_script(char* filename) {
+static int run_script(char* filename) {
     struct stat file_info;
     if (0 != stat(filename, &file_info)) {
         printf("Error executing stat on file: %s\n", filename);
@@ -385,8 +382,7 @@ int run_script(char* filename) {
 }
 
 int run_and_remove_extendedcommand() {
-	char* primary_path = get_primary_storage_path();
-	char* extra_path = get_extra_storage_path();
+    char* primary_path = get_primary_storage_path();
     char tmp[PATH_MAX];
     sprintf(tmp, "cp %s /tmp/%s", EXTENDEDCOMMAND_SCRIPT, basename(EXTENDEDCOMMAND_SCRIPT));
     __system(tmp);
@@ -400,24 +396,22 @@ int run_and_remove_extendedcommand() {
         }
         sleep(1);
     }
-    sprintf(tmp, "%s/clockworkmod/.recoverycheckpoint", primary_path);
-    remove(tmp);
+    remove("/sdcard/clockworkmod/.recoverycheckpoint");
     if (i == 0) {
         ui_print("Timed out waiting for SD card... continuing anyways.");
     }
 
     ui_print("Verifying SD Card marker...\n");
     struct stat st;
-    sprintf(tmp, "%s/clockworkmod/.salted_hash", primary_path);
-    if (stat(tmp, &st) != 0) {
+    if (stat("/sdcard/clockworkmod/.salted_hash", &st) != 0) {
         ui_print("SD Card marker not found...\n");
-        if (volume_for_path(extra_path) != NULL) {
-            ui_print("Checking Extra SD Card marker...\n");
+        if (volume_for_path("/emmc") != NULL) {
+            ui_print("Checking Internal SD Card marker...\n");
             ensure_path_unmounted(primary_path);
-            if (ensure_path_mounted(extra_path) != 0) {
-                ui_print("Extra SD Card marker not found... continuing anyways.\n");
+            if (ensure_path_mounted_at_mount_point("/emmc", primary_path) != 0) {
+                ui_print("Internal SD Card marker not found... continuing anyways.\n");
                 // unmount everything, and remount as normal
-                ensure_path_unmounted(extra_path);
+                ensure_path_unmounted("/emmc");
                 ensure_path_unmounted(primary_path);
 
                 ensure_path_mounted(primary_path);
@@ -427,5 +421,11 @@ int run_and_remove_extendedcommand() {
 
     sprintf(tmp, "/tmp/%s", basename(EXTENDEDCOMMAND_SCRIPT));
     int ret;
+#ifdef I_AM_KOUSH
+    if (0 != (ret = before_run_script(tmp))) {
+        ui_print("Error processing ROM Manager script. Please verify that you are performing the backup, restore, or ROM installation from ROM Manager v4.4.0.0 or higher.\n");
+        return ret;
+    }
+#endif
     return run_script(tmp);
 }

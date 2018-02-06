@@ -16,28 +16,25 @@
 
 #include <linux/input.h>
 
-#include "recovery_ui.h"
 #include "common.h"
 #include "extendedcommands.h"
+#include "recovery_ui.h"
 
 char* MENU_HEADERS[] = { NULL };
 
-char* MENU_ITEMS[] = { "Reboot Phone",
-                       "Install zip",
-                       "Wipe Menu",
-                       "Backup/Restore",
-                       "Mounts/Storage",
-                       "Advanced Menu",
-                       "Carliv Menu",
-                       "Power Menu",
-                       "Vibrate ON/OFF(touch)",
+char* MENU_ITEMS[] = { "reboot system now",
+                       "install zip",
+                       "wipe data/factory reset",
+                       "wipe cache partition",
+                       "backup and restore",
+                       "mounts and storage",
+                       "advanced",
                        NULL };
 
 void device_ui_init(UIParameters* ui_parameters) {
 }
 
 int device_recovery_start() {
-    fast_ui_init();
     return 0;
 }
 
@@ -50,23 +47,6 @@ int device_perform_action(int which) {
     return which;
 }
 
-
 int device_wipe_data() {
-    return 0;
-}
-
-int device_wipe_cache() {
-    return 0;
-}
-
-int device_wipe_dalvik_cache() {
-    return 0;
-}
-
-int device_wipe_battery_stats() {
-    return 0;
-}
-
-int device_wipe_system() {
     return 0;
 }

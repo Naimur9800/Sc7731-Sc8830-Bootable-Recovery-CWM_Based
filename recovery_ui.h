@@ -26,7 +26,7 @@ extern void device_ui_init(UIParameters* ui_parameters);
 
 // Called when recovery starts up.  Returns 0.
 extern int device_recovery_start();
-void fast_ui_init();
+
 // Called in the input thread when a new key (key_code) is pressed.
 // *key_pressed is an array of KEY_MAX+1 bytes indicating which other
 // keys are already pressed.  Return true if the device should reboot
@@ -45,7 +45,6 @@ extern int device_reboot_now(volatile char* key_pressed, int key_code);
 //   - invoke a specific action (a menu position: any non-negative number)
 extern int device_handle_key(int key, int visible);
 
-int key_press_event();
 // Perform a recovery action selected from the menu.  'which' will be
 // the item number of the selected menu item, or a non-negative number
 // returned from device_handle_key().  The menu will be hidden when
@@ -53,8 +52,48 @@ int key_press_event();
 // information to the screen.
 extern int device_perform_action(int which);
 
+// Called when we do a wipe data/factory reset operation (either via a
+// reboot from the main system with the --wipe_data flag, or when the
+// user boots into recovery manually and selects the option from the
+// menu.)  Can perform whatever device-specific wiping actions are
+// needed.  Return 0 on success.  The userdata and cache partitions
+// are erased after this returns (whether it returns success or not).
+int device_wipe_data();
+
+#ifdef BOARD_NATIVE_DUALBOOT
+// Called instead of 'verify_root_and_recovery' and should be used
+// to invoke 'verify_root_and_recovery' for every system.
+extern int device_verify_root_and_recovery(void);
+
+// Called from 'confirm_selection' to prepare the displayed title
+// 'buf' will be used as title after this function has been called
+// which means that you at least should write the title into this buffer.
+// This should be used to add a prefix to the title which tells the user
+// on which system the current action will be performed to.
+extern int device_build_selection_title(char* buf, const char* title);
+
+#ifdef BOARD_NATIVE_DUALBOOT_SINGLEDATA
+extern void device_toggle_truedualboot(void);
+extern void device_choose_bootmode(void);
+extern int device_get_truedualboot_entry(char* tdb_name);
+extern int device_get_bootmode(char* bootmode_name);
+extern int device_truedualboot_mount(const char* path, const char* mount_point);
+extern int device_truedualboot_unmount(const char* path);
+extern int device_truedualboot_format_volume(const char* volume);
+extern int device_truedualboot_format_device(const char *device, const char *path, const char *fs_type);
+extern int device_truedualboot_before_update(const char *path, ZipArchive *zip);
+extern void device_truedualboot_after_load_volume_table();
+#endif
+#endif
+
+// ui_wait_key() special return codes
+/*
+#define REBOOT              -1 // ui_wait_key() timeout to reboot
+#define CANCEL              -2 // ui_cancel_wait_key()
+*/
 #define REFRESH             -3
 
+// return actions by ui_handle_key() for get_menu_selection()
 #define NO_ACTION           -1
 
 #define HIGHLIGHT_UP        -2
@@ -62,22 +101,18 @@ extern int device_perform_action(int which);
 #define SELECT_ITEM         -4
 #define GO_BACK             -5
 
-#define HIGHLIGHT_ON_TOUCH  -6
-
 // main menu items for prompt_and_wait()
 #define ITEM_REBOOT          0
 #define ITEM_APPLY_EXT       1
-#define ITEM_APPLY_SDCARD    1  
-#define ITEM_APPLY_ZIP       1  
-#define ITEM_WIPE_MENU       2
+#define ITEM_APPLY_SDCARD    1  // historical synonym for ITEM_APPLY_EXT
+#define ITEM_APPLY_ZIP       1  // used for installing an update from a zip
+#define ITEM_WIPE_DATA       2
+#define ITEM_WIPE_CACHE      3
 // unused in cwr
-#define ITEM_APPLY_CACHE     3
-#define ITEM_NANDROID        3
-#define ITEM_PARTITION       4
-#define ITEM_ADVANCED        5
-#define ITEM_CARLIV          6
-#define ITEM_POWER           7
-#define ITEM_CUSTOM          8
+#define ITEM_APPLY_CACHE     4
+#define ITEM_NANDROID        4
+#define ITEM_PARTITION       5
+#define ITEM_ADVANCED        6
 
 // Header text to display above the main menu.
 extern char* MENU_HEADERS[];
@@ -85,32 +120,15 @@ extern char* MENU_HEADERS[];
 // Text of menu items.
 extern char* MENU_ITEMS[];
 
-extern int device_wipe_data();
-
-extern int device_wipe_cache();
-
-extern int device_wipe_dalvik_cache();
-
-extern int device_wipe_battery_stats();
-
-extern int device_wipe_system();
-
 // Loosely track the depth of the current menu
 extern int ui_root_menu;
 
 int get_menu_selection(const char** headers, char** items, int menu_only, int initial_selection);
 
 void set_sdcard_update_bootloader_message();
-char* word_wrap (char* buffer, const unsigned int buffer_sz, const char* string, const unsigned int string_len, const unsigned int max_line_width);
 
 extern int ui_handle_key(int key, int visible);
-int ui_menu_touch_select();
-extern int vibration_enabled;
-void ui_rainbow_mode();
-extern int ui_get_rainbow_mode;
 
 void reboot_main_system(int cmd, int flags, char *arg);
-
-void draw_menu();
 
 #endif

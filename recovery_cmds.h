@@ -20,13 +20,13 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "dedupe/dedupe.h"
 #include "edifyscripting.h"
 #include "extendedcommands.h"
 #include "nandroid.h"
 
 extern int minizip_main(int argc, char **argv);
 extern int flash_image_main(int argc, char **argv);
-extern int volume_main(int argc, char **argv);
 extern int edify_main(int argc, char **argv);
 extern int dump_image_main(int argc, char **argv);
 extern int erase_image_main(int argc, char **argv);
@@ -39,13 +39,10 @@ extern int setprop_main(int argc, char **argv);
 extern int getprop_main(int argc, char **argv);
 extern int fsck_msdos_main(int argc, char **argv);
 extern int newfs_msdos_main(int argc, char **argv);
-extern int nandroid_main(int argc, char **argv);
+extern int vdc_main(int argc, char **argv);
 extern int pigz_main(int argc, char **argv);
 extern int sdcard_main(int argc, char **argv);
 
-#ifdef BOARD_INCLUDE_CRYPTO
-extern int vdc_main(int argc, char **argv);
-#endif
 extern int busybox_driver(int argc, char **argv);
 
 struct recovery_cmd {
@@ -55,6 +52,7 @@ struct recovery_cmd {
 
 static const struct recovery_cmd recovery_cmds[] = {
     { "minizip",        minizip_main },
+    { "dedupe",         dedupe_main },
     { "flash_image",    flash_image_main },
     { "volume",         volume_main },
     { "edify",          edify_main },
@@ -71,10 +69,13 @@ static const struct recovery_cmd recovery_cmds[] = {
     { "getprop",        getprop_main },
     { "fsck_msdos",     fsck_msdos_main },
     { "newfs_msdos",    newfs_msdos_main },
+    { "vdc",            vdc_main },
     { "pigz",           pigz_main },
     { "sdcard",         sdcard_main },
-#ifdef BOARD_INCLUDE_CRYPTO
-    { "vdc",            vdc_main },
+#ifdef USE_F2FS
+    { "mkfs.f2fs",      make_f2fs_main },
+    { "fsck.f2fs",      fsck_f2fs_main },
+    { "fibmap.f2fs",    fibmap_main },
 #endif
     { NULL, NULL },
 };
@@ -90,4 +91,4 @@ inline struct recovery_cmd get_command(char* command) {
     return recovery_cmds[i];
 }
 
-#endif
+#endif // _RECOVERY_CMDS_H

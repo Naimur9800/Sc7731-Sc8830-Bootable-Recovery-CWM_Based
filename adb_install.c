@@ -26,29 +26,35 @@
 #include <signal.h>
 #include <fcntl.h>
 
-#include "minuictr/minui.h"
+#include "minui/minui.h"
 #include "cutils/properties.h"
 #include "install.h"
 #include "common.h"
 #include "recovery_ui.h"
 #include "adb_install.h"
-#include "minadbd/fuse_adb_provider.h"
-#include "fuse_sideload.h"
-
-static pthread_t sideload_thread;
+#include "minadbd/adb.h"
 
 static void
-set_usb_driver(bool enabled) {
+set_usb_driver(int enabled) {
     int fd = open("/sys/class/android_usb/android0/enable", O_WRONLY);
     if (fd < 0) {
-        printf("failed to open driver control: %s\n", strerror(errno));
+        ui_print("failed to open driver control: %s\n", strerror(errno));
         return;
     }
-    if (write(fd, enabled ? "1" : "0", 1) < 0) {
-        printf("failed to set driver control: %s\n", strerror(errno));
+
+    int status;
+    if (enabled > 0) {
+        status = write(fd, "1", 1);
+    } else {
+        status = write(fd, "0", 1);
     }
+
+    if (status < 0) {
+        ui_print("failed to set driver control: %s\n", strerror(errno));
+    }
+
     if (close(fd) < 0) {
-        printf("failed to close driver control: %s\n", strerror(errno));
+        ui_print("failed to close driver control: %s\n", strerror(errno));
     }
 }
 
@@ -58,134 +64,105 @@ stop_adbd() {
     set_usb_driver(0);
 }
 
+
 static void
 maybe_restart_adbd() {
     char value[PROPERTY_VALUE_MAX+1];
     int len = property_get("ro.debuggable", value, NULL);
     if (len == 1 && value[0] == '1') {
         ui_print("Restarting adbd...\n");
-        set_usb_driver(true);
+        set_usb_driver(1);
         property_set("ctl.start", "adbd");
     }
 }
 
-struct sideload_data {
-    int*        wipe_cache;
-    const char* install_file;
-    bool        cancel;
-    int         result;
+struct sideload_waiter_data {
+    pid_t child;
 };
 
-static struct sideload_data sideload_data;
-
-// How long (in seconds) we wait for the host to start sending us a
-// package, before timing out.
-#define ADB_INSTALL_TIMEOUT 300
-
 void *adb_sideload_thread(void* v) {
+    struct sideload_waiter_data* data = (struct sideload_waiter_data*)v;
 
-    pid_t child;
-    if ((child = fork()) == 0) {
-        execl("/sbin/recovery", "recovery", "--adbd", NULL);
-        _exit(-1);
-    }
-
-    time_t start_time = time(NULL);
-    time_t now = start_time;
-
-    // FUSE_SIDELOAD_HOST_PATHNAME will start to exist once the host
-    // connects and starts serving a package.  Poll for its
-    // appearance.  (Note that inotify doesn't work with FUSE.)
-    int result = INSTALL_NONE;
-    int status = -1;
-    struct stat st;
-    while (now - start_time < ADB_INSTALL_TIMEOUT) {
-        /*
-         * Exit if either:
-         *  - The adb child process dies, or
-         *  - The ui tells us to cancel
-         */
-        if (kill(child, 0) != 0) {
-            result = INSTALL_ERROR;
-            break;
-        }
-
-        if (sideload_data.cancel) {
-            break;
-        }
-
-        status = stat(FUSE_SIDELOAD_HOST_PATHNAME, &st);
-        if (status == 0) {
-            break;
-        }
-        if (errno != ENOENT && errno != ENOTCONN) {
-            ui_print("\nError %s waiting for package\n\n", strerror(errno));
-            result = INSTALL_ERROR;
-            break;
-        }
-
-        sleep(1);
-        now = time(NULL);
-    }
-
-    if (status == 0) {
-        // Signal UI thread that we can no longer cancel
-        ui_cancel_wait_key();
-
-        result = install_package(FUSE_SIDELOAD_HOST_PATHNAME,
-                                 sideload_data.wipe_cache,
-                                 sideload_data.install_file,
-                                 false);
-
-        sideload_data.result = result;
-    }
-
-    // Ensure adb exits
-    kill(child, SIGTERM);
-    waitpid(child, &status, 0);
+    int status;
+    waitpid(data->child, &status, 0);
+    LOGI("sideload process finished\n");
+    
+    ui_cancel_wait_key();
 
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        if (WEXITSTATUS(status) == 3) {
-            ui_print("\nYou need adb 1.0.32 or newer to sideload to this device.\n\n");
-        } else if (!WIFSIGNALED(status)) {
-            ui_print("\n(adbd status %d)\n", WEXITSTATUS(status));
-        }
+        ui_print("status %d\n", WEXITSTATUS(status));
     }
 
     LOGI("sideload thread finished\n");
     return NULL;
 }
 
-void
-start_sideload(int* wipe_cache, const char* install_file) {
-
+int
+apply_from_adb() {
     stop_adbd();
-    set_usb_driver(true);
+    set_usb_driver(1);
 
-    ui_print("\n\nNow send the package you want to apply to the device with \"adb sideload <filename>\"...\n");
+    ui_print("\n\nSideload started ...\nNow send the package you want to apply\n"
+              "to the device with \"adb sideload <filename>\"...\n\n");
 
-    sideload_data.wipe_cache = wipe_cache;
-    sideload_data.install_file = install_file;
-    sideload_data.cancel = false;
-    sideload_data.result = INSTALL_NONE;
+    struct sideload_waiter_data data;
+    if ((data.child = fork()) == 0) {
+        execl("/sbin/recovery", "recovery", "adbd", NULL);
+        _exit(-1);
+    }
+    
+    pthread_t sideload_thread;
+    pthread_create(&sideload_thread, NULL, &adb_sideload_thread, &data);
+    
+    static const char* headers[] = {  "ADB Sideload",
+                                "",
+                                NULL
+    };
 
-    pthread_create(&sideload_thread, NULL, &adb_sideload_thread, NULL);
-}
+    static char* list[] = { "Cancel sideload", NULL };
+    
+    get_menu_selection(headers, list, 0, 0);
 
-void stop_sideload() {
-    sideload_data.cancel = true;
-}
-
-int wait_sideload() {
-    set_perf_mode(1);
-
-    pthread_join(sideload_thread, NULL);
-
-    ui_clear_key_queue();
-
+    set_usb_driver(0);
     maybe_restart_adbd();
 
-    set_perf_mode(0);
+    // kill the child
+    kill(data.child, SIGTERM);
+    pthread_join(sideload_thread, NULL);
+    ui_clear_key_queue();
 
-    return sideload_data.result;
+    struct stat st;
+    if (stat(ADB_SIDELOAD_FILENAME, &st) != 0) {
+        if (errno == ENOENT) {
+            ui_print("No package received.\n");
+            ui_set_background(BACKGROUND_ICON_ERROR);
+        } else {
+            ui_print("Error reading package:\n  %s\n", strerror(errno));
+            ui_set_background(BACKGROUND_ICON_ERROR);
+        }
+        return INSTALL_ERROR;
+    }
+
+    int install_status = install_package(ADB_SIDELOAD_FILENAME);
+    ui_reset_progress();
+
+    if (install_status != INSTALL_SUCCESS) {
+        ui_set_background(BACKGROUND_ICON_ERROR);
+        ui_print("Installation aborted.\n");
+    }
+
+#ifdef ENABLE_LOKI
+    else if (loki_support_enabled) {
+        ui_print("Checking if loki-fying is needed");
+        install_status = loki_check();
+        if (install_status != INSTALL_SUCCESS)
+            ui_set_background(BACKGROUND_ICON_ERROR);
+    }
+#endif
+
+    if (install_status == INSTALL_SUCCESS)
+        ui_set_background(BACKGROUND_ICON_NONE);
+
+    remove(ADB_SIDELOAD_FILENAME);
+    return install_status;
 }

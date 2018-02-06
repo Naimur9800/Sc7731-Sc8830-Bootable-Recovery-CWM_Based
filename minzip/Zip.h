@@ -32,7 +32,7 @@ extern "C" {
 typedef struct ZipEntry {
     unsigned int fileNameLen;
     const char*  fileName;       // not null-terminated
-    loff_t         offset;
+    long         offset;
     long         compLen;
     long         uncompLen;
     int          compression;
@@ -46,11 +46,11 @@ typedef struct ZipEntry {
  * One Zip archive.  Treat as opaque.
  */
 typedef struct ZipArchive {
-    unsigned int   numEntries;
-    ZipEntry*      pEntries;
-    HashTable*     pHash;          // maps file name to ZipEntry
-    unsigned char* addr;
-    size_t         length;
+    int         fd;
+    unsigned int numEntries;
+    ZipEntry*   pEntries;
+    HashTable*  pHash;          // maps file name to ZipEntry
+    MemMapping  map;
 } ZipArchive;
 
 /*
@@ -68,7 +68,7 @@ typedef struct {
  * On success, returns 0 and populates "pArchive".  Returns nonzero errno
  * value on failure.
  */
-int mzOpenZipArchive(unsigned char* addr, size_t length, ZipArchive* pArchive);
+int mzOpenZipArchive(const char* fileName, ZipArchive* pArchive);
 
 /*
  * Close archive, releasing resources associated with it.
@@ -121,7 +121,7 @@ INLINE UnterminatedString mzGetZipEntryFileName(const ZipEntry* pEntry) {
     ret.len = pEntry->fileNameLen;
     return ret;
 }
-INLINE loff_t mzGetZipEntryOffset(const ZipEntry* pEntry) {
+INLINE long mzGetZipEntryOffset(const ZipEntry* pEntry) {
     return pEntry->offset;
 }
 INLINE long mzGetZipEntryUncompLen(const ZipEntry* pEntry) {
@@ -158,18 +158,6 @@ bool mzProcessZipEntryContents(const ZipArchive *pArchive,
     void *cookie);
 
 /*
- * Similar to mzProcessZipEntryContents, but explicitly process the stream
- * using XZ/LZMA before calling processFunction.
- *
- * This is a separate function for use by the updater. LZMA provides huge
- * size reductions vs deflate, but isn't actually supported by the ZIP format.
- * We need to process it using as little memory as possible.
- */
-bool mzProcessZipEntryContentsXZ(const ZipArchive *pArchive,
-    const ZipEntry *pEntry, ProcessZipEntryContentsFunction processFunction,
-    void *cookie);
-
-/*
  * Read an entry into a buffer allocated by the caller.
  */
 bool mzReadZipEntry(const ZipArchive* pArchive, const ZipEntry* pEntry,
@@ -195,22 +183,8 @@ bool mzExtractZipEntryToBuffer(const ZipArchive *pArchive,
     const ZipEntry *pEntry, unsigned char* buffer);
 
 /*
- * Return a pointer and length for a given entry.  The returned region
- * should be valid until pArchive is closed, and should be treated as
- * read-only.
- *
- * Only makes sense for entries which are stored (ie, not compressed).
- * No guarantees are made regarding alignment of the returned pointer.
- */
-bool mzGetStoredEntry(const ZipArchive *pArchive,
-    const ZipEntry* pEntry, unsigned char **addr, size_t *length);
-
-/*
  * Inflate all entries under zipDir to the directory specified by
  * targetDir, which must exist and be a writable directory.
- *
- * Directory entries and symlinks are not extracted.
- *
  *
  * The immediate children of zipDir will become the immediate
  * children of targetDir; e.g., if the archive contains the entries
@@ -225,6 +199,11 @@ bool mzGetStoredEntry(const ZipArchive *pArchive,
  *     /tmp/one
  *     /tmp/two
  *     /tmp/d/three
+ *
+ * flags is zero or more of the following:
+ *
+ *     MZ_EXTRACT_FILES_ONLY - only unpack files, not directories or symlinks
+ *     MZ_EXTRACT_DRY_RUN - don't do anything, but do invoke the callback
  *
  * If timestamp is non-NULL, file timestamps will be set accordingly.
  *

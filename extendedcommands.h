@@ -17,56 +17,37 @@
 #ifndef __EXTENDEDCOMMANDS_H
 #define __EXTENDEDCOMMANDS_H
 
+extern int signature_check_enabled;
 
-int signature_check_enabled;
-int md5_check_enabled;
-int script_assert_enabled;
-int vibration_enabled;
-int ui_get_rainbow_mode;
-
-void write_recovery_version();
-void toggle_md5_check();
-void toggle_vibration();
-void show_power_menu();
-int get_vibration_state();
-
-int do_nandroid_backup(const char* backup_name);
-int do_nandroid_restore();
-void show_nandroid_restore_menu(const char* path);
-
-void show_advanced_menu();
-void show_nandroid_menu();
-void show_partition_menu();
 int __system(const char *command);
 
-void wipe_preflash(int confirm);
-void wipe_data(int confirm);
-void wipe_cache(int confirm);
-void wipe_dalvik_cache(int confirm);
-void wipe_battery_stats(int confirm);
-void show_wipe_menu();
-void show_carliv_menu();
-void toggle_rainbow();
-void show_multi_flash_menu();
-
-void format_sdcard(const char* volume);
-int has_datadata();
-void handle_failure();
-void process_volumes();
-int extendedcommand_file_exists();
-void show_install_update_menu();
+int show_nandroid_menu();
+int show_advanced_menu();
+int show_partition_menu();
+int show_install_update_menu();
 int confirm_selection(const char* title, const char* confirm);
+int install_zip(const char* packagefilepath);
 
+int empty_nandroid_bitmask(unsigned char flags);
+int has_datadata();
+void process_volumes();
+int volume_main(int argc, char **argv);
+int format_device(const char *device, const char *path, const char *fs_type);
+int format_unknown_device(const char *device, const char* path, const char *fs_type);
+
+void handle_failure(int ret);
+void write_recovery_version();
 int verify_root_and_recovery();
+
+#ifdef USE_F2FS
+extern int make_f2fs_main(int argc, char **argv);
+extern int fsck_f2fs_main(int argc, char **argv);
+extern int fibmap_main(int argc, char **argv);
+#endif
 
 #ifdef RECOVERY_EXTEND_NANDROID_MENU
 void extend_nandroid_menu(char** items, int item_count, int max_items);
 void handle_nandroid_menu(int item_count, int selected);
 #endif
-
-#define RECOVERY_NO_CONFIRM_FILE    "clockworkmod/.no_confirm"
-#define RECOVERY_MANY_CONFIRM_FILE  "clockworkmod/.many_confirm"
-#define RECOVERY_VERSION_FILE       "clockworkmod/.recovery_version"
-#define RECOVERY_LAST_INSTALL_FILE  "clockworkmod/.last_install_path"
 
 #endif  // __EXTENDEDCOMMANDS_H

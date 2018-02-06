@@ -19,7 +19,4 @@
 
 void RegisterInstallFunctions();
 
-static int make_parents(char* name);
-extern int tune2fs_main(int argc, char **argv);
-
 #endif

@@ -25,13 +25,11 @@
 #include <limits.h>
 #include <errno.h>
 
-#include "../../../bionic/libc/private/bionic_futex.h"
-
-#include "cutils/properties.h"
+#include <cutils/properties.h>
+#include <sys/atomics.h>
+#include <sys/mman.h>
 
 #include "legacy_properties.h"
-
-#include <sys/mman.h>
 #include "legacy_property_service.h"
 
 static int persistent_properties_loaded = 0;
@@ -156,16 +154,20 @@ static int legacy_property_set(const char *name, const char *value)
     int namelen = strlen(name);
     int valuelen = strlen(value);
 
-    if (namelen >= PROP_NAME_MAX) return -1;
-    if (valuelen >= PROP_VALUE_MAX) return -1;
-    if (namelen < 1) return -1;
+    if (namelen >= PROP_NAME_MAX)
+        return -1;
+    if (valuelen >= PROP_VALUE_MAX)
+        return -1;
+    if (namelen < 1)
+        return -1;
 
     pi = (prop_info*) __legacy_property_find(name);
 
 
     if (pi != 0) {
         /* ro.* properties may NEVER be modified once set */
-        if (!strncmp(name, "ro.", 3)) return -1;
+        if (!strncmp(name, "ro.", 3))
+            return -1;
 
         pa = __legacy_property_area__;
         update_prop_info(pi, value, valuelen);
@@ -173,7 +175,8 @@ static int legacy_property_set(const char *name, const char *value)
         __futex_wake(&pa->serial, INT32_MAX);
     } else {
         pa = __legacy_property_area__;
-        if (pa->count == PA_COUNT_MAX) return -1;
+        if (pa->count == PA_COUNT_MAX)
+            return -1;
 
         pi = pa_info_array + pa->count;
         pi->serial = (valuelen << 24);
@@ -181,7 +184,7 @@ static int legacy_property_set(const char *name, const char *value)
         memcpy(pi->value, value, valuelen + 1);
 
         pa->toc[pa->count] =
-            (namelen << 24) | (((unsigned long) pi) - ((unsigned long) pa));
+            (namelen << 24) | (((unsigned) pi) - ((unsigned) pa));
 
         pa->count++;
         pa->serial++;
