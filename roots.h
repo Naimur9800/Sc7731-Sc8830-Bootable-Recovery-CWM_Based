@@ -68,5 +68,10 @@ int is_data_media_preserved();
 int setup_install_mounts();
 int encrypted_data_mounted;
 int data_is_decrypted;
+int has_adopted_storage();
+int mount_adopted_storage();
+int setup_adopted_storage();
+int adopted_storage_mounted;
+int adopted_storage_decrypted;
 
 #endif  // RECOVERY_ROOTS_H_

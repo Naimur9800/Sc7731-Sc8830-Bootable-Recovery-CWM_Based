@@ -182,7 +182,12 @@ static void compute_directory_stats(const char* directory) {
     nandroid_files_count = 0;
     nandroid_files_total = 0;
 
-    sprintf(tmp, "find %s | %s wc -l > /tmp/dircount", directory, strcmp(directory, "/data") == 0 && is_data_media() ? "grep -v /data/media |" : "");
+#ifdef USE_ADOPTED_STORAGE
+	sprintf(tmp, "find %s | %s wc -l > /tmp/dircount", directory, strcmp(directory, "/data_sd") == 0 && is_data_media() ? "grep -v /data_sd/media |" : "");
+#else
+	sprintf(tmp, "find %s | %s wc -l > /tmp/dircount", directory, strcmp(directory, "/data") == 0 && is_data_media() ? "grep -v /data/media |" : "");
+#endif
+    
     __system(tmp);
 
     FILE* f = fopen("/tmp/dircount", "r");
@@ -315,21 +320,33 @@ static int do_tar_compress(char* command, int callback, const char* backup_file_
 
 static int tar_compress_wrapper(const char* backup_path, const char* backup_file_image, int callback) {
     char tmp[PATH_MAX];
-    sprintf(tmp, "cd $(dirname %s) ; touch %s.tar ; set -o pipefail ; (tar -cpv --exclude=data/data/com.google.android.music/files/* %s $(basename %s) | split -a 1 -b 1000000000 /proc/self/fd/0 %s.tar.) 2> /proc/self/fd/1 ; exit $?", backup_path, backup_file_image, strcmp(backup_path, "/data") == 0 && is_data_media() ? "--exclude=data/media" : "", backup_path, backup_file_image);
+#ifdef USE_ADOPTED_STORAGE
+	sprintf(tmp, "cd $(dirname %s) ; touch %s.tar ; set -o pipefail ; (tar -cpv --exclude=data/data/com.google.android.music/files/* %s $(basename %s) | split -a 1 -b 1000000000 /proc/self/fd/0 %s.tar.) 2> /proc/self/fd/1 ; exit $?", backup_path, backup_file_image, strcmp(backup_path, "/data_sd") == 0 && is_data_media() ? "--exclude=data_sd/media" : "", backup_path, backup_file_image);
+#else
+	sprintf(tmp, "cd $(dirname %s) ; touch %s.tar ; set -o pipefail ; (tar -cpv --exclude=data/data/com.google.android.music/files/* %s $(basename %s) | split -a 1 -b 1000000000 /proc/self/fd/0 %s.tar.) 2> /proc/self/fd/1 ; exit $?", backup_path, backup_file_image, strcmp(backup_path, "/data") == 0 && is_data_media() ? "--exclude=data/media" : "", backup_path, backup_file_image);
+#endif
 
     return do_tar_compress(tmp, callback, backup_file_image);
 }
 
 static int tar_gzip_compress_wrapper(const char* backup_path, const char* backup_file_image, int callback) {
     char tmp[PATH_MAX];
-    sprintf(tmp, "cd $(dirname %s) ; touch %s.tar.gz ; set -o pipefail ; (tar -cpv --exclude=data/data/com.google.android.music/files/* %s $(basename %s) | pigz -c | split -a 1 -b 1000000000 /proc/self/fd/0 %s.tar.gz.) 2> /proc/self/fd/1 ; exit $?", backup_path, backup_file_image, strcmp(backup_path, "/data") == 0 && is_data_media() ? "--exclude=data/media" : "", backup_path, backup_file_image);
+#ifdef USE_ADOPTED_STORAGE
+	sprintf(tmp, "cd $(dirname %s) ; touch %s.tar.gz ; set -o pipefail ; (tar -cpv --exclude=data/data/com.google.android.music/files/* %s $(basename %s) | pigz -c | split -a 1 -b 1000000000 /proc/self/fd/0 %s.tar.gz.) 2> /proc/self/fd/1 ; exit $?", backup_path, backup_file_image, strcmp(backup_path, "/data_sd") == 0 && is_data_media() ? "--exclude=data_sd/media" : "", backup_path, backup_file_image);
+#else
+	sprintf(tmp, "cd $(dirname %s) ; touch %s.tar.gz ; set -o pipefail ; (tar -cpv --exclude=data/data/com.google.android.music/files/* %s $(basename %s) | pigz -c | split -a 1 -b 1000000000 /proc/self/fd/0 %s.tar.gz.) 2> /proc/self/fd/1 ; exit $?", backup_path, backup_file_image, strcmp(backup_path, "/data") == 0 && is_data_media() ? "--exclude=data/media" : "", backup_path, backup_file_image);
+#endif
 
     return do_tar_compress(tmp, callback, backup_file_image);
 }
 
 static int tar_dump_wrapper(const char* backup_path, const char* backup_file_image, int callback) {
     char tmp[PATH_MAX];
-    sprintf(tmp, "cd $(dirname %s); set -o pipefail ; tar -cpv --exclude=data/data/com.google.android.music/files/* %s $(basename %s) 2> /dev/null | cat", backup_path, strcmp(backup_path, "/data") == 0 && is_data_media() ? "--exclude=data/media" : "", backup_path);
+#ifdef USE_ADOPTED_STORAGE
+	sprintf(tmp, "cd $(dirname %s); set -o pipefail ; tar -cpv --exclude=data/data/com.google.android.music/files/* %s $(basename %s) 2> /dev/null | cat", backup_path, strcmp(backup_path, "/data_sd") == 0 && is_data_media() ? "--exclude=data_sd/media" : "", backup_path);
+#else
+	sprintf(tmp, "cd $(dirname %s); set -o pipefail ; tar -cpv --exclude=data/data/com.google.android.music/files/* %s $(basename %s) 2> /dev/null | cat", backup_path, strcmp(backup_path, "/data") == 0 && is_data_media() ? "--exclude=data/media" : "", backup_path);
+#endif
 
     return __system(tmp);
 }
@@ -389,7 +406,13 @@ static nandroid_backup_handler get_backup_handler(const char *backup_path) {
         return NULL;
     }
 
-    if (strcmp(backup_path, "/data") == 0 && is_data_media()) {
+#ifdef USE_ADOPTED_STORAGE
+	if (strcmp(backup_path, "/data_sd") == 0 && is_data_media()) {
+        return default_backup_handler;
+    }
+#endif
+
+	if (strcmp(backup_path, "/data") == 0 && is_data_media()) {
         return default_backup_handler;
     }
 
@@ -496,7 +519,11 @@ int nandroid_backup(const char* backup_path) {
 
     Volume* volume;
     if (is_data_media_volume_path(backup_path))
-        volume = volume_for_path("/data");
+#ifdef USE_ADOPTED_STORAGE
+        volume = volume_for_path("/data_sd");
+#else
+		volume = volume_for_path("/data");
+#endif
     else
         volume = volume_for_path(backup_path);
     if (NULL == volume)
@@ -554,6 +581,11 @@ int nandroid_backup(const char* backup_path) {
 
     if (has_datadata()) {
         if (0 != (ret = nandroid_backup_partition(backup_path, "/datadata")))
+            return print_and_error(NULL, ret);
+    }
+    
+    if (has_adopted_storage()) {
+        if (0 != (ret = nandroid_backup_partition(backup_path, "/data_sd")))
             return print_and_error(NULL, ret);
     }
 
@@ -620,7 +652,11 @@ int nandroid_advanced_backup(const char* backup_path, int boot, int system, int 
     if (NULL == volume)
         return print_and_error("Unable to find volume for backup path.\n", NANDROID_ERROR_GENERAL);
     if (is_data_media_volume_path(volume->mount_point))
-        volume = volume_for_path("/data");
+#ifdef USE_ADOPTED_STORAGE
+        volume = volume_for_path("/data_sd");
+#else
+		volume = volume_for_path("/data");
+#endif
     int ret;
     struct statfs sfs;
     struct stat s;
@@ -660,6 +696,11 @@ int nandroid_advanced_backup(const char* backup_path, int boot, int system, int 
 
     if (data && has_datadata()) {
         if (0 != (ret = nandroid_backup_partition(backup_path, "/datadata")))
+            return print_and_error(NULL, ret);
+    }
+    
+    if (data && has_adopted_storage()) {
+        if (0 != (ret = nandroid_backup_partition(backup_path, "/data_sd")))
             return print_and_error(NULL, ret);
     }
     
@@ -705,7 +746,11 @@ int nandroid_mtk_backup(const char* backup_path, int uboot, int logo, int nvram,
     if (NULL == volume)
         return print_and_error("Unable to find volume for backup path.\n", NANDROID_ERROR_GENERAL);
     if (is_data_media_volume_path(volume->mount_point))
-        volume = volume_for_path("/data");
+#ifdef USE_ADOPTED_STORAGE
+        volume = volume_for_path("/data_sd");
+#else
+		volume = volume_for_path("/data");
+#endif
     int ret;
     struct statfs sfs;
     if (NULL != volume) {
@@ -892,7 +937,13 @@ static nandroid_restore_handler get_restore_handler(const char *backup_path) {
         return NULL;
     }
 
-    if (strcmp(backup_path, "/data") == 0 && is_data_media()) {
+#ifdef USE_ADOPTED_STORAGE
+	if (strcmp(backup_path, "/data_sd") == 0 && is_data_media()) {
+        return tar_extract_wrapper;
+    }
+#endif
+
+	if (strcmp(backup_path, "/data") == 0 && is_data_media()) {
         return tar_extract_wrapper;
     }
 
@@ -966,7 +1017,11 @@ static int nandroid_restore_partition_extended(const char* backup_path, const ch
 
     if (vol == NULL || 0 == strcmp(vol->fs_type, "auto"))
         backup_filesystem = NULL;
-    else if (0 == strcmp(vol->mount_point, "/data") && is_data_media())
+#ifdef USE_ADOPTED_STORAGE
+	else if (0 == strcmp(vol->mount_point, "/data_sd") && is_data_media())
+        backup_filesystem = NULL;
+#endif
+	else if (0 == strcmp(vol->mount_point, "/data") && is_data_media())
         backup_filesystem = NULL;
 
     else if (backup_filesystem != NULL && strcmp(vol->fs_type, backup_filesystem) != 0 &&
@@ -1135,6 +1190,11 @@ int nandroid_restore(const char* backup_path, int restore_boot, int restore_syst
             return print_and_error(NULL, ret);
     }
     
+    if (has_adopted_storage()) {
+        if (restore_data && 0 != (ret = nandroid_restore_partition(backup_path, "/data_sd")))
+            return print_and_error(NULL, ret);
+    }
+    
     if (restore_data && 0 == stat(get_android_secure_path(), &s)) {
         if (0 != (ret = nandroid_restore_partition_extended(backup_path, get_android_secure_path(), 0)))
 			return print_and_error(NULL, ret);
@@ -1204,6 +1264,11 @@ int nandroid_advanced_restore(const char* backup_path, int boot, int system, int
 
     if (data && has_datadata()) {
         if (0 != (ret = nandroid_restore_partition(backup_path, "/datadata")))
+            return print_and_error(NULL, ret);
+    }
+    
+    if (data && has_adopted_storage()) {
+        if (0 != (ret = nandroid_restore_partition(backup_path, "/data_sd")))
             return print_and_error(NULL, ret);
     }
     

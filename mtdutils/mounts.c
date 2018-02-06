@@ -18,13 +18,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <errno.h>
 #include <sys/mount.h>
 
 #ifdef BOARD_HAS_MTK_CPU
 #ifdef BOARD_NEEDS_MTK_GETSIZE
 #include <ctype.h>
-#include <unistd.h>
 #include <sys/limits.h>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -271,7 +271,11 @@ int mtk_p_size(const char* path) {
     Volume* volume;
     
     if (is_data_media_volume_path(path))
-        volume = volume_for_path("/data");
+#ifdef USE_ADOPTED_STORAGE
+        volume = volume_for_path("/data_sd");
+#else
+		volume = volume_for_path("/data");
+#endif
     else
         volume = volume_for_path(path);
 

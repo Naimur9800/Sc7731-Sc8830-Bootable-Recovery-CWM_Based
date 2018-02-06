@@ -39,11 +39,16 @@ extern int setprop_main(int argc, char **argv);
 extern int getprop_main(int argc, char **argv);
 extern int fsck_msdos_main(int argc, char **argv);
 extern int newfs_msdos_main(int argc, char **argv);
+#ifdef HAVE_EXFAT
+extern int mkfs_exfat_main(int argc, char **argv); 
+extern int mount_exfat_main(int argc, char **argv); 
+extern int fsck_exfat_main(int argc, char **argv);
+#endif
 extern int nandroid_main(int argc, char **argv);
 extern int pigz_main(int argc, char **argv);
 extern int sdcard_main(int argc, char **argv);
-
 #ifdef BOARD_INCLUDE_CRYPTO
+extern int vold_main(int argc, char **argv);
 extern int vdc_main(int argc, char **argv);
 #endif
 extern int busybox_driver(int argc, char **argv);
@@ -71,9 +76,15 @@ static const struct recovery_cmd recovery_cmds[] = {
     { "getprop",        getprop_main },
     { "fsck_msdos",     fsck_msdos_main },
     { "newfs_msdos",    newfs_msdos_main },
+#ifdef HAVE_EXFAT
+    { "mkfs.exfat",     mkfs_exfat_main },
+    { "exfat-fuse",     mount_exfat_main },
+    { "fsck.exfat",     fsck_exfat_main },
+#endif
     { "pigz",           pigz_main },
     { "sdcard",         sdcard_main },
 #ifdef BOARD_INCLUDE_CRYPTO
+    { "minivold",       vold_main },
     { "vdc",            vdc_main },
 #endif
     { NULL, NULL },

@@ -191,10 +191,10 @@ static GRSurface* fbdev_init(minui_backend* backend) {
         gr_framebuffer[0].format = GGL_PIXEL_FORMAT_RGB_565;
     } else if (vi.red.offset == 8 || vi.red.offset == 16) {
         printf("setting GGL_PIXEL_FORMAT_RGBX_8888\n");
-        gr_framebuffer[0].format = GGL_PIXEL_FORMAT_BGRA_8888;
+        gr_framebuffer[0].format = GGL_PIXEL_FORMAT_RGBX_8888;
     } else if (vi.red.offset == 0) {
         printf("setting GGL_PIXEL_FORMAT_RGBX_8888\n");
-        gr_framebuffer[0].format = GGL_PIXEL_FORMAT_RGBA_8888;
+        gr_framebuffer[0].format = GGL_PIXEL_FORMAT_RGBX_8888;
     } else if (vi.red.offset == 24) {
         printf("setting GGL_PIXEL_FORMAT_RGBX_8888\n");
         gr_framebuffer[0].format = GGL_PIXEL_FORMAT_RGBX_8888;
@@ -256,7 +256,7 @@ static GRSurface* fbdev_init(minui_backend* backend) {
 }
 
 static GRSurface* fbdev_flip(minui_backend* backend __unused) {
-#if defined(RECOVERY_BGRA)
+#if defined(RECOVERY_RGBX)
     // In case of RGBX, do some byte swapping
     unsigned int idx;
     unsigned char tmp;

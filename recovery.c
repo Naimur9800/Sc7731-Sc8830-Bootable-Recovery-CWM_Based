@@ -627,6 +627,11 @@ void wipe_preflash(int confirm) {
 	} else {
 		ui_print("\n-- Data not formated because it is encrypted. If you format it you will loose encryption. If you want to do it use the Wipe data option in this menu.\n");
 	} 
+#ifdef USE_ADOPTED_STORAGE
+	if (has_adopted_storage()) {
+		ui_print("\n-- Adopted Storage not formated. If you format it you will loose all data on it. If you still want to do it use the Wipe Adopted data option in this menu.\n");
+	}
+#endif  
     if (volume_for_path("/sd-ext") != NULL) erase_volume("/sd-ext");
     if (get_android_secure_path() != NULL) erase_volume(get_android_secure_path());
     ui_print("Data wipe complete.\n");
@@ -683,6 +688,19 @@ void wipe_data(int confirm) {
     if (get_android_secure_path() != NULL) erase_volume(get_android_secure_path());
     ui_print("Data wipe complete.\n");
 }
+
+#ifdef USE_ADOPTED_STORAGE
+void wipe_adopted(int confirm) {
+    if (confirm && !confirm_selection( "Confirm wipe Adopted data?", "Yes - Wipe Adopted data"))
+        return;
+        
+    ui_print("\n-- Wiping Adopted data...\n");
+    if (is_data_media()) preserve_data_media(1);
+    device_wipe_adopted();
+    erase_volume("/data_sd");
+    ui_print("Adopted data wipe complete.\n");
+}
+#endif
 
 void wipe_cache(int confirm) {
     if (confirm && !confirm_selection( "Confirm wipe cache?", "Yes - Wipe cache"))
@@ -971,6 +989,8 @@ int main(int argc, char **argv) {
     load_volume_table();
     encrypted_data_mounted = 0;
 	data_is_decrypted = 0;
+	adopted_storage_mounted = 0;
+	adopted_storage_decrypted = 0;
     process_volumes();
 #ifdef QCOM_HARDWARE
     parse_t_daemon_data_files();
@@ -1070,14 +1090,26 @@ int main(int argc, char **argv) {
         }
     } else if (wipe_data) {
         if (device_wipe_data()) status = INSTALL_ERROR;
+#ifdef USE_ADOPTED_STORAGE
+		if (device_wipe_adopted()) status = INSTALL_ERROR;
+#endif
         preserve_data_media(0);
         if (erase_volume("/data")) status = INSTALL_ERROR;
+#ifdef USE_ADOPTED_STORAGE
+        if (erase_volume("/data_sd")) status = INSTALL_ERROR;
+#endif
         preserve_data_media(1);
         if (has_datadata() && erase_volume("/datadata")) status = INSTALL_ERROR;
-        if (wipe_cache && erase_volume("/cache")) status = INSTALL_ERROR;
+        if (wipe_cache && erase_volume("/cache")) status = INSTALL_ERROR;        
+#ifdef USE_ADOPTED_STORAGE
         if (status != INSTALL_SUCCESS) {
+            ui_print("Data and/or Adopted data wipe failed.\n");
+        }
+#else
+		if (status != INSTALL_SUCCESS) {
             ui_print("Data wipe failed.\n");
         }
+#endif
     } else if (wipe_cache) {
         if (wipe_cache && erase_volume("/cache")) status = INSTALL_ERROR;
         if (status != INSTALL_SUCCESS) {

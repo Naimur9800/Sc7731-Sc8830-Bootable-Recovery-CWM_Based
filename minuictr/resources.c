@@ -218,7 +218,7 @@ int res_create_display_surface(const char* name, gr_surface* pSurface) {
         goto exit;
     }
 
-#if defined(RECOVERY_RGBX) || defined(RECOVERY_RGBX)
+#if defined(RECOVERY_ABGR) || defined(RECOVERY_BGRA)
     png_set_bgr(png_ptr);
 #endif
 
@@ -290,7 +290,7 @@ int res_create_multi_display_surface(const char* name, int* frames, gr_surface**
         }
     }
 
-#if defined(RECOVERY_RGBX) || defined(RECOVERY_RGBX)
+#if defined(RECOVERY_ABGR) || defined(RECOVERY_BGRA)
     png_set_bgr(png_ptr);
 #endif
 

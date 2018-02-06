@@ -29,6 +29,10 @@ else
 	LOCAL_C_INCLUDES += system/core/adf/libadf/include
 endif
 
+LOCAL_SRC_FILES += graphics_drm.c
+LOCAL_WHOLE_STATIC_LIBRARIES += libdrm
+LOCAL_C_INCLUDES += external/libdrm external/libdrm/include/drm
+
 LOCAL_C_INCLUDES += \
 	$(commands_recovery_local_path)/minuictr/fonts \
     external/libpng \
@@ -48,10 +52,10 @@ ifeq ($(subst ",,$(TARGET_RECOVERY_FORCE_PIXEL_FORMAT)),RGB_565)
 endif
 
 ifeq ($(subst ",,$(TARGET_RECOVERY_PIXEL_FORMAT)),RGBX_8888)
-  LOCAL_CFLAGS += -DRECOVERY_ABGR
+  LOCAL_CFLAGS += -DRECOVERY_RGBX
 endif
 ifeq ($(subst ",,$(TARGET_RECOVERY_PIXEL_FORMAT)),RGBX_8888)
-  LOCAL_CFLAGS += -DRECOVERY_RGBA
+  LOCAL_CFLAGS += -DRECOVERY_RGBX
 endif
 ifeq ($(subst ",,$(TARGET_RECOVERY_PIXEL_FORMAT)),RGBX_8888)
   LOCAL_CFLAGS += -DRECOVERY_RGBX

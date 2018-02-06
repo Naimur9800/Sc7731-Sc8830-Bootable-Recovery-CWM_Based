@@ -64,7 +64,7 @@ static int adf_surface_init(struct adf_pdata *pdata, struct drm_mode_modeinfo *m
     surf->base.height = mode->vdisplay;
     surf->base.row_bytes = surf->pitch;
     surf->base.pixel_bytes = (pdata->format == DRM_FORMAT_RGB565) ? 2 : 4;
-    if (pdata->format == DRM_FORMAT_RGBX8888)
+    if (pdata->format == DRM_FORMAT_ABGR8888)
         surf->base.format = GGL_PIXEL_FORMAT_RGBX_8888;
     else if (pdata->format == DRM_FORMAT_RGBX8888)
         surf->base.format = GGL_PIXEL_FORMAT_RGBX_8888;
@@ -166,9 +166,9 @@ static GRSurface* adf_init(minui_backend *backend)
     ssize_t n_dev_ids, i;
     GRSurface* ret;
 
-#if defined(RECOVERY_RGBX)
-    pdata->format = DRM_FORMAT_RGBX8888;
-    printf("setting DRM_FORMAT_RGBX8888 and GGL_PIXEL_FORMAT_RGBX_8888, GGL_PIXEL_FORMAT may not match!\n");
+#if defined(RECOVERY_ABGR)
+    pdata->format = DRM_FORMAT_ABGR8888;
+    printf("setting DRM_FORMAT_ABGR8888 and GGL_PIXEL_FORMAT_RGBX_8888, GGL_PIXEL_FORMAT may not match!\n");
 #elif defined(RECOVERY_RGBX)
     pdata->format = DRM_FORMAT_RGBX8888;
     printf("setting DRM_FORMAT_RGBX8888 and GGL_PIXEL_FORMAT_RGBX_8888\n");

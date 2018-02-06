@@ -16,6 +16,7 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <errno.h>
@@ -260,6 +261,13 @@ int gr_init(void)
         }
     }
 #endif
+    if (!gr_draw) {
+        gr_backend = open_drm();
+        gr_draw = gr_backend->init(gr_backend);
+        if (gr_draw)
+            printf("Using drm graphics.\n");
+    }
+
     if (!gr_draw) {
         gr_backend = open_fbdev();
         gr_draw = gr_backend->init(gr_backend);

@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/reboot.h>
 #include <sys/types.h>
 #include <time.h>
@@ -311,7 +312,14 @@ void show_wipe_menu() {
 						   "Wipe Cache",
 						   "Wipe Dalvik Cache",
 						   "Wipe ALL - Preflash",
+						   NULL,
 						   NULL };
+
+#ifdef USE_ADOPTED_STORAGE
+	if (has_adopted_storage()) {
+        wipe_items[4] = "Wipe Adopted Data";
+	}
+#endif
 
 	for (;;) {
 		int chosen_item = get_filtered_menu_selection(headers, wipe_items, 0, 0, sizeof(wipe_items) / sizeof(char*));
@@ -334,6 +342,12 @@ void show_wipe_menu() {
 			wipe_preflash(ui_text_visible());
 			if (!ui_text_visible()) return;
 			break;
+#ifdef USE_ADOPTED_STORAGE			
+		  case 4:
+			wipe_adopted(ui_text_visible());
+			if (!ui_text_visible()) return;
+			break;
+#endif			
 		}
 	}    
 }
@@ -1001,6 +1015,8 @@ static int is_safe_to_format(const char* name) {
     property_get("ro.ctr.forbid_format", str, "/misc,/radio,/bootloader,/recovery,/efs,/wimax");
 
 	if (is_encrypted_data()) strncat(str, ",/data", 6);
+    
+    if (has_adopted_storage()) strncat(str, ",/data_sd", 9);
 
     partition = strtok(str, ", ");
     while (partition != NULL) {
@@ -1148,7 +1164,9 @@ void show_partition_menu() {
 	                preserve_data_media(1);
 	                // recreate /data/media with proper permissions
 		            ensure_path_mounted("/data");
-		            setup_data_media();
+#ifndef USE_ADOPTED_STORAGE
+					setup_data_media();
+#endif		            
 				}
             }
         } else if (is_data_media() && chosen_item == (mountable_volumes+formatable_volumes+1)) {
@@ -2090,8 +2108,10 @@ void format_sdcard(const char* volume) {
             break;
         case 6:
             if (stat("/sbin/mkfs.ntfs", &sv) == 0) {
-				sprintf(cmd, "/sbin/mkfs.ntfs -f %s", v->device);
-                ret = __system(cmd);
+				const char *ntfs_path = "/sbin/mkfs.ntfs";
+				const char* const ntfs_argv[] = {"mkfs.ntfs", "-f", v->device, NULL};
+		
+				ret = exec_cmd(ntfs_path, (char* const*)ntfs_argv);
 			}
             break;
         case 7:
@@ -2363,13 +2383,13 @@ void show_carliv_menu() {
 				ui_clear_text();
 				ui_set_background(BACKGROUND_ICON_NONE);
 				ui_print(EXPAND(RECOVERY_VERSION)" ** "EXPAND(RECOVERY_BUILD_OS)" for "EXPAND(RECOVERY_DEVICE)"\n");
-			    ui_print("Compiled by Md. Naimur Rahman on: "EXPAND(RECOVERY_BUILD_DATE)"\n\n");
+			    ui_print("Compiled by Md. Naimur Rahman  on: "EXPAND(RECOVERY_BUILD_DATE)"\n\n");
                 ui_print("Based on Clockworkmod recovery.\n");
                 ui_print("This is a Recovery made by carliv from xda with Clockworkmod base and many improvements inspired from TWRP, PhilZ  or created by carliv.\n");
-                ui_print("But full touch not supported for some devices,touch module developed by PhilZ for PhilZ Touch Recovery, ported here by carliv.\n");
+                ui_print(" But full touch not supported for some devices, touch support module developed by PhilZ for PhilZ Touch Recovery, ported here by carliv.\n");
 				if (volume_for_path("/custpack") != NULL)
 					ui_print("[*] With Custpack partition support for Alcatel or TCL phones\n");
-				ui_print("For Aroma File Manager is recommended version 1.80 - Calung, from amarullz xda thread, because it has a full touch support in most of devices.\n");
+				ui_print("For Aroma File Manager is recommended version 1.80 - Calung, from amarullz xda thread .\n");
 				ui_print("Thank you all!\n\n");
 				ui_print("Return to menu with any key.\n");
 				ui_wait_key();
@@ -2506,6 +2526,8 @@ static void create_fstab() {
     write_fstab_root("/data", file);
     if (volume_for_path("/datadata") != NULL)
          write_fstab_root("/datadata", file);
+	if (volume_for_path("/data_sd") != NULL)
+         write_fstab_root("/data_sd", file);
     if (volume_for_path("/internal_sd") != NULL)
          write_fstab_root("/internal_sd", file);
     write_fstab_root("/system", file);
@@ -2567,10 +2589,22 @@ void process_volumes() {
 		setup_encrypted_data();
 	} else {
 		set_encryption_state(0);
-		if (is_data_media()) setup_data_media();
-	}	
+	}
+#ifdef USE_ADOPTED_STORAGE	
+	if (has_adopted_storage()) {
+		ui_set_background(BACKGROUND_ICON_INSTALLING);
+		setup_adopted_storage();		
+	}
+#endif
+	if (is_data_media()) setup_data_media();
 #else
 	set_encryption_state(0);
+#ifdef USE_ADOPTED_STORAGE	
+	if (has_adopted_storage()) {
+		ui_set_background(BACKGROUND_ICON_INSTALLING);
+		setup_adopted_storage();		
+	}
+#endif
 	if (is_data_media()) setup_data_media();	
 #endif
     return;

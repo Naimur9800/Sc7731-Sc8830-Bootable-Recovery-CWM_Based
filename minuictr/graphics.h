@@ -43,6 +43,7 @@ typedef struct minui_backend {
 
 minui_backend* open_fbdev();
 minui_backend* open_adf();
+minui_backend* open_drm();
 minui_backend* open_overlay();
 
 #ifdef __cplusplus

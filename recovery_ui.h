@@ -87,6 +87,8 @@ extern char* MENU_ITEMS[];
 
 extern int device_wipe_data();
 
+extern int device_wipe_adopted();
+
 extern int device_wipe_cache();
 
 extern int device_wipe_dalvik_cache();

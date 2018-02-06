@@ -59,6 +59,12 @@ int device_wipe_cache() {
     return 0;
 }
 
+#ifdef USE_ADOPTED_STORAGE
+int device_wipe_adopted() {
+    return 0;
+}
+#endif
+
 int device_wipe_dalvik_cache() {
     return 0;
 }

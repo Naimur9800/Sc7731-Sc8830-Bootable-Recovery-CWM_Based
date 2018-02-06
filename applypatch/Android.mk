@@ -23,6 +23,7 @@ $(foreach board_define,$(BOARD_RECOVERY_DEFINES), \
   ) \
   )
 
+
 LOCAL_SRC_FILES := applypatch.c bspatch.c freecache.c imgpatch.c utils.c
 LOCAL_MODULE := libapplypatch
 LOCAL_MODULE_TAGS := eng

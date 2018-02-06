@@ -1,6 +1,7 @@
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
+
 LOCAL_SRC_FILES := \
 	mtdutils.c \
 	mounts.c
@@ -10,6 +11,7 @@ include $(BUILD_STATIC_LIBRARY)
 
 ifeq ($(BOARD_USES_BML_OVER_MTD),true)
 include $(CLEAR_VARS)
+
 LOCAL_SRC_FILES := bml_over_mtd.c
 LOCAL_C_INCLUDES += $(commands_recovery_local_path)/mtdutils
 LOCAL_MODULE := libbml_over_mtd

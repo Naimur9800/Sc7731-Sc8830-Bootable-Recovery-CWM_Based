@@ -13,6 +13,7 @@
 # limitations under the License.
 
 LOCAL_PATH := $(call my-dir)
+CRYPT_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 LOCAL_CFLAGS += -Wno-sign-compare
@@ -23,3 +24,7 @@ LOCAL_MODULE := uncrypt
 LOCAL_STATIC_LIBRARIES := libfs_mgr liblog libcutils
 
 include $(BUILD_EXECUTABLE)
+
+ifeq ($(BOARD_USE_ADOPTED_STORAGE), true)
+include $(CRYPT_PATH)/lvm2/Android.mk
+endif

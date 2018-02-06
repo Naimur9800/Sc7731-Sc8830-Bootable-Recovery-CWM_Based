@@ -41,6 +41,9 @@ int __system(const char *command);
 
 void wipe_preflash(int confirm);
 void wipe_data(int confirm);
+#ifdef USE_ADOPTED_STORAGE
+void wipe_adopted(int confirm);
+#endif
 void wipe_cache(int confirm);
 void wipe_dalvik_cache(int confirm);
 void wipe_battery_stats(int confirm);

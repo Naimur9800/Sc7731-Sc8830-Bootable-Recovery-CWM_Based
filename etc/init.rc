@@ -11,8 +11,12 @@ on early-init
     start ueventd
     start healthd
 
+service set_permissive /sbin/permissive.sh
+    oneshot
+    seclabel u:r:recovery:s0
+
 on init
-    export PATH /sbin:/system/bin:/system/xbin:/su/bin
+    export PATH /sbin:/system/bin:/system/xbin:/su/bin:/su/xbin
     export ANDROID_ROOT /system
     export ANDROID_DATA /data
     export EXTERNAL_STORAGE /sdcard
@@ -24,6 +28,7 @@ on init
     mkdir /external_sd
     mkdir /system
     mkdir /data
+    mkdir /data_sd
     mkdir /cache
     mkdir /sideload
     mount tmpfs tmpfs /tmp
@@ -55,6 +60,8 @@ on init
     write /proc/sys/vm/max_map_count 1000000
 
 on fs
+    mount pstore pstore /sys/fs/pstore
+
     mkdir /dev/usb-ffs 0770 shell shell
     mkdir /dev/usb-ffs/adb 0770 shell shell
     mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
@@ -124,7 +131,6 @@ service healthd /sbin/healthd -r
     seclabel u:r:healthd:s0
 
 service recovery /sbin/recovery
-    seclabel u:r:recovery:s0
 
 service setup_adbd /sbin/setup_adbd
     oneshot
@@ -134,8 +140,11 @@ service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery
     socket adbd stream 660 system system
     seclabel u:r:adbd:s0
 
-service vold /sbin/minivold
+service vold /sbin/minivold \
+	--blkid_context=u:r:blkid:s0 --blkid_untrusted_context=u:r:blkid_untrusted:s0 \
+	--fsck_context=u:r:fsck:s0 --fsck_untrusted_context=u:r:fsck_untrusted:s0
     socket vold stream 0660 root mount
+    socket cryptd stream 0660 root mount
     ioprio be 2
     setenv BLKID_FILE /tmp/vold_blkid.tab
     seclabel u:r:vold:s0
