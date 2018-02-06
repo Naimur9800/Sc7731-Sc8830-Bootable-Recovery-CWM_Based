@@ -41,9 +41,9 @@
 
 #include "mmcutils.h"
 
-#ifdef BOARD_HAS_MTK_CPU
+#ifdef BOARD_HAS_MTK
 #ifdef BOARD_NEEDS_MTK_GETSIZE
-#include "mtdutils/mounts.h"
+#include "../mounts.h"
 #endif
 #endif
 
@@ -464,7 +464,7 @@ mmc_raw_copy (const MmcPartition *partition, char *in_file) {
         }
     }
 
-    fsync(fileno(out));
+    fsync(out);
     ret = 0;
 ERROR1:
     fclose ( out );
@@ -507,7 +507,7 @@ mmc_raw_dump_internal (const char* in_file, const char *out_file, unsigned sz) {
         while ( ( ch = fgetc ( in ) ) != EOF )
         {
             fputc ( ch, out );
-#ifdef BOARD_HAS_MTK_CPU
+#ifdef BOARD_HAS_MTK
 #ifdef BOARD_NEEDS_MTK_GETSIZE
             if (++counter == sz)
                 break;
@@ -526,7 +526,7 @@ mmc_raw_dump_internal (const char* in_file, const char *out_file, unsigned sz) {
         }
     }
 
-    fsync(fileno(out));
+    fsync(out);
     ret = 0;
 ERROR1:
     fclose ( out );
@@ -625,10 +625,11 @@ int cmd_mmc_backup_raw_partition(const char *partition, const char *filename)
             return -1;
         return mmc_raw_dump(p, filename);
     }
-    else {
+    else 
+    {
         unsigned sz = 0;
 
-#ifdef BOARD_HAS_MTK_CPU
+#ifdef BOARD_HAS_MTK
 //=========================================/
 //=   dynamic get size of MTK partitions  =/
 //=    original work of PhilZ for PhilZ   =/
@@ -657,40 +658,19 @@ int cmd_mmc_backup_raw_partition(const char *partition, const char *filename)
             sz = (unsigned)mtk_size;
             printf("Uboot: %s (%u)\n", partition, sz);
         }
-
-        if (strstr(partition, "/lk") != NULL) {
-            if (mtk_p_size("/lk") != 0)
-                return -1;
-            sz = (unsigned)mtk_size;
-            printf("Uboot: %s (%u)\n", partition, sz);
-        }
-
-        if (strstr(partition, "/logo") != NULL) {
-            if (mtk_p_size("/logo") != 0)
-                return -1;
-            sz = (unsigned)mtk_size;
-            printf("Logo: %s (%u)\n", partition, sz);
-        }
-
+        
         if (strstr(partition, "/nvram") != NULL) {
             if (mtk_p_size("/nvram") != 0)
                 return -1;
             sz = (unsigned)mtk_size;
             printf("Nvram: %s (%u)\n", partition, sz);
         }
-
-        if (strstr(partition, "/sec_ro") != NULL) {
-            if (mtk_p_size("/sec_ro") != 0)
+        
+        if (strstr(partition, "/logo") != NULL) {
+            if (mtk_p_size("/logo") != 0)
                 return -1;
             sz = (unsigned)mtk_size;
-            printf("Secro: %s (%u)\n", partition, sz);
-        }
-
-        if (strstr(partition, "/secro") != NULL) {
-            if (mtk_p_size("/secro") != 0)
-                return -1;
-            sz = (unsigned)mtk_size;
-            printf("Secro: %s (%u)\n", partition, sz);
+            printf("Nvram: %s (%u)\n", partition, sz);
         }
 #endif
 #endif

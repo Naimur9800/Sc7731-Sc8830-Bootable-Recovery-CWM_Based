@@ -3,7 +3,6 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdio.h>
-#include <string.h>
 
 #include "flashutils/flashutils.h"
 
@@ -54,7 +53,7 @@ static int detect_partition(const char *partitionType, const char *partition)
     int type = device_flash_type();
     if (strstr(partition, "/dev/block/mtd") != NULL)
         type = MTD;
-    else if (strstr(partition, "/dev/block/mmc") != NULL || strstr(partition, "/dev/block/sd") != NULL)
+    else if (strstr(partition, "/dev/block/mmc") != NULL)
         type = MMC;
     else if (strstr(partition, "/dev/block/bml") != NULL)
         type = BML;
@@ -91,7 +90,7 @@ int backup_raw_partition(const char* partitionType, const char *partition, const
         case BML:
             return cmd_bml_backup_raw_partition(partition, filename);
         default:
-            printf("unable to detect device type\n");
+            fprintf(stderr, "unable to detect device type\n");
             return -1;
     }
 }

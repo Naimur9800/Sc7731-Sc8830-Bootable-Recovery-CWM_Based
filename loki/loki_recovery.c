@@ -20,9 +20,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include "loki.h"
-#include "loki_recovery.h"
 #include "../common.h"
-#include "../install.h"
 #include "../libcrecovery/common.h"    // __system
 
 
@@ -44,12 +42,12 @@ static int loki_dump_partitions() {
         sprintf(cmd, "dd if=%s of=%s", target_partitions[i], dump_images[i]);
         if (__system(cmd) != 0) {
             LOGE("[-] Failed to dump %s\n", target_partitions[i]);
-            return INSTALL_ERROR;
+            return 1;
         }
         ++i;
     }
 
-    return INSTALL_SUCCESS;
+    return 0;
 }
 
 static int needs_loki_patch(const char *partition_image) {
@@ -73,13 +71,13 @@ static int needs_loki_patch(const char *partition_image) {
     }
 
     orig = mmap(0, (st.st_size + 0x2000 + 0xfff) & ~0xfff, PROT_READ, MAP_PRIVATE, ifd, 0);
-    if ((char*)orig == MAP_FAILED) {
+    if (orig == MAP_FAILED) {
         LOGE("[-] Failed to mmap Loki image.\n");
         return 0;
     }
 
-    hdr = (struct boot_img_hdr*)orig;
-    loki_hdr = (struct loki_hdr*)orig + 0x400;
+    hdr = orig;
+    loki_hdr = orig + 0x400;
 
     /* Verify this is a Loki image */
     if (memcmp(loki_hdr->magic, "LOKI", 4)) {
@@ -94,18 +92,15 @@ int loki_check() {
     const char *target_partitions[] = { "boot", "recovery", NULL };
     const char *dump_images[] = { BOOT_DUMP_IMAGE, RECOVERY_DUMP_IMAGE, NULL };
     int i = 0;
-    int ret;
+    int ret = 0;
 
     ret = loki_dump_partitions();
-    while (ret == INSTALL_SUCCESS && target_partitions[i] != NULL) {
+    while (!ret && target_partitions[i] != NULL) {
         if (needs_loki_patch(dump_images[i])) {
-            if (loki_patch(target_partitions[i], ABOOT_DUMP_IMAGE, dump_images[i], LOKI_IMAGE) != 0) {
-                ret = INSTALL_ERROR;
+            if ((ret = loki_patch(target_partitions[i], ABOOT_DUMP_IMAGE, dump_images[i], LOKI_IMAGE)) != 0)
                 LOGE("Error loki-ifying the %s image.\n", target_partitions[i]);
-            } else if (loki_flash(target_partitions[i], LOKI_IMAGE) != 0) {
-                ret = INSTALL_ERROR;
+            else if ((ret = loki_flash(target_partitions[i], LOKI_IMAGE)) != 0)
                 LOGE("Error loki-flashing the %s image.\n", target_partitions[i]);
-            }
         }
         ++ i;
     }

@@ -3,14 +3,15 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 BOARD_RECOVERY_DEFINES := BOARD_BML_BOOT BOARD_BML_RECOVERY
-LOCAL_STATIC_LIBRARIES := libcrecovery
-LOCAL_C_INCLUDES := $(commands_recovery_local_path)/libcrecovery
 
 $(foreach board_define,$(BOARD_RECOVERY_DEFINES), \
   $(if $($(board_define)), \
     $(eval LOCAL_CFLAGS += -D$(board_define)=\"$($(board_define))\") \
   ) \
   )
+
+LOCAL_STATIC_LIBRARIES := libcrecovery
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/../libcrecovery
 
 LOCAL_SRC_FILES := bmlutils.c
 LOCAL_MODULE := libbmlutils

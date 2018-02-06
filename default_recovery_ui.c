@@ -16,9 +16,9 @@
 
 #include <linux/input.h>
 
-#include "recovery_ui.h"
 #include "common.h"
 #include "extendedcommands.h"
+#include "recovery_ui.h"
 
 char* MENU_HEADERS[] = { NULL };
 
@@ -30,14 +30,12 @@ char* MENU_ITEMS[] = { "Reboot Phone",
                        "Advanced Menu",
                        "Carliv Menu",
                        "Power Menu",
-                       "Vibrate ON/OFF(touch)",
                        NULL };
 
 void device_ui_init(UIParameters* ui_parameters) {
 }
 
 int device_recovery_start() {
-    fast_ui_init();
     return 0;
 }
 
