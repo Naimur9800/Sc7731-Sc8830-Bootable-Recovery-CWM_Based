@@ -10,12 +10,9 @@ LOCAL_SRC_FILES := \
 
 LOCAL_C_INCLUDES := \
 	external/zlib \
-	external/safe-iop/include \
-	external/lzma/xz-embedded
+	external/safe-iop/include
 
 LOCAL_STATIC_LIBRARIES := libselinux
-LOCAL_STATIC_LIBRARIES += libxz
-LOCAL_STATIC_LIBRARIES += libz
 
 LOCAL_MODULE := libminzip
 

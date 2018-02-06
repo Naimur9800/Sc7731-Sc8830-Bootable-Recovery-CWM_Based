@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <errno.h>
-#include <malloc.h>
 #include <unistd.h>
 #include <string.h>
 
@@ -113,7 +112,9 @@ int ApplyBSDiffPatch(const unsigned char* old_data, ssize_t old_size,
         printf("short write of output: %d (%s)\n", errno, strerror(errno));
         return 1;
     }
-    if (ctx) SHA_update(ctx, new_data, new_size);
+    if (ctx) {
+        SHA_update(ctx, new_data, new_size);
+    }
     free(new_data);
 
     return 0;

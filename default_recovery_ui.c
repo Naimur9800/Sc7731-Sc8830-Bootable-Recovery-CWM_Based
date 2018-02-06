@@ -19,25 +19,29 @@
 #include "recovery_ui.h"
 #include "common.h"
 #include "extendedcommands.h"
+#include "advanced_functions.h"
+#include "recovery_settings.h"
 
 char* MENU_HEADERS[] = { NULL };
 
-char* MENU_ITEMS[] = { "Reboot Phone",
-                       "Install zip",
-                       "Wipe Menu",
-                       "Backup/Restore",
-                       "Mounts/Storage",
-                       "Advanced Menu",
-                       "Carliv Menu",
-                       "Power Menu",
-                       "Vibrate ON/OFF(touch)",
-                       NULL };
+char* MENU_ITEMS[] = {
+    "Reboot System Now",
+    "Install Zip",
+    "Wipe and Format Options",
+    "Backup and Restore",
+    "Mounts and Storage",
+    "Advanced Functions",
+    "Recovery Settings",
+    "Power Options",
+    NULL
+};
 
 void device_ui_init(UIParameters* ui_parameters) {
 }
 
+//add here what we want to run on recovery start, even for temporary recovery
 int device_recovery_start() {
-    fast_ui_init();
+    refresh_recovery_settings(1);
     return 0;
 }
 
@@ -50,23 +54,6 @@ int device_perform_action(int which) {
     return which;
 }
 
-
 int device_wipe_data() {
-    return 0;
-}
-
-int device_wipe_cache() {
-    return 0;
-}
-
-int device_wipe_dalvik_cache() {
-    return 0;
-}
-
-int device_wipe_battery_stats() {
-    return 0;
-}
-
-int device_wipe_system() {
     return 0;
 }

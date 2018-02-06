@@ -13,45 +13,43 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <libgen.h>
 #include <limits.h>
 #include <linux/input.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/limits.h>
 #include <sys/reboot.h>
-#include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
-#include "bootloader.h"
-#include "common.h"
-#include "cutils/properties.h"
-#include "edify/expr.h"
-#include "edifyscripting.h"
-#include "extendedcommands.h"
-#include "flashutils/flashutils.h"
-#include "install.h"
-#include "minuictr/minui.h"
-#include "minzip/DirUtil.h"
-#include "mtdutils/mounts.h"
-#include "mmcutils/mmcutils.h"
-#include "mtdutils/mtdutils.h"
-#include "nandroid.h"
-#include "recovery_ui.h"
-#include "roots.h"
+#include <sys/wait.h>
+#include <sys/limits.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
-#define EXTENDEDCOMMAND_SCRIPT "/cache/recovery/extendedcommand"
+#include <signal.h>
+#include <sys/wait.h>
+#include <libgen.h> // basename
+
+#include <cutils/properties.h>
+
+#include "edify/expr.h"
+#include "libcrecovery/common.h"
+#include "minui/minui.h"
+#include "minzip/DirUtil.h"
+#include "edifyscripting.h"
+#include "common.h"
+#include "install.h"
+#include "roots.h"
+#include "recovery_ui.h"
+#include "extendedcommands.h"
+#include "recovery_settings.h"
+#include "nandroid.h"
 
 extern int yyparse();
 extern int yy_scan_bytes();
@@ -215,6 +213,8 @@ Value* RestoreFn(const char* name, State* state, int argc, Expr* argv[]) {
             restorecache = 0;
         else if (strcmp(args2[i], "nosd-ext") == 0)
             restoresdext = 0;
+        else if (strcmp(args2[i], "nomd5") == 0)
+            enable_md5sum.value = 0;
     }
     
     for (i = 0; i < argc; ++i) {
@@ -227,7 +227,7 @@ Value* RestoreFn(const char* name, State* state, int argc, Expr* argv[]) {
         free(path);
         return StringValue(strdup(""));
     }
-
+    
     return StringValue(path);
 }
 
@@ -309,14 +309,9 @@ int run_script_from_buffer(char* script_data, int script_len, char* filename)
     return 0;
 }
 
-int extendedcommand_file_exists() {
-    struct stat file_info;
-    return 0 == stat(EXTENDEDCOMMAND_SCRIPT, &file_info);
-}
-
 int edify_main(int argc, char** argv) {
     load_volume_table();
-    process_volumes();
+    setup_data_media(1);
     RegisterBuiltins();
     RegisterRecoveryHooks();
     FinishRegistration();
@@ -362,7 +357,8 @@ int edify_main(int argc, char** argv) {
     return 0;
 }
 
-int run_script(char* filename) {
+int run_script(char* filename)
+{
     struct stat file_info;
     if (0 != stat(filename, &file_info)) {
         printf("Error executing stat on file: %s\n", filename);
@@ -384,9 +380,9 @@ int run_script(char* filename) {
     return ret;
 }
 
-int run_and_remove_extendedcommand() {
-	char* primary_path = get_primary_storage_path();
-	char* extra_path = get_extra_storage_path();
+int run_and_remove_extendedcommand()
+{
+    char* primary_path = get_primary_storage_path();
     char tmp[PATH_MAX];
     sprintf(tmp, "cp %s /tmp/%s", EXTENDEDCOMMAND_SCRIPT, basename(EXTENDEDCOMMAND_SCRIPT));
     __system(tmp);
@@ -400,24 +396,22 @@ int run_and_remove_extendedcommand() {
         }
         sleep(1);
     }
-    sprintf(tmp, "%s/clockworkmod/.recoverycheckpoint", primary_path);
-    remove(tmp);
+    remove("/sdcard/clockworkmod/.recoverycheckpoint");
     if (i == 0) {
         ui_print("Timed out waiting for SD card... continuing anyways.");
     }
 
     ui_print("Verifying SD Card marker...\n");
     struct stat st;
-    sprintf(tmp, "%s/clockworkmod/.salted_hash", primary_path);
-    if (stat(tmp, &st) != 0) {
+    if (stat("/sdcard/clockworkmod/.salted_hash", &st) != 0) {
         ui_print("SD Card marker not found...\n");
-        if (volume_for_path(extra_path) != NULL) {
-            ui_print("Checking Extra SD Card marker...\n");
+        if (volume_for_path("/emmc") != NULL) {
+            ui_print("Checking Internal SD Card marker...\n");
             ensure_path_unmounted(primary_path);
-            if (ensure_path_mounted(extra_path) != 0) {
-                ui_print("Extra SD Card marker not found... continuing anyways.\n");
+            if (ensure_path_mounted_at_mount_point("/emmc", primary_path) != 0) {
+                ui_print("Internal SD Card marker not found... continuing anyways.\n");
                 // unmount everything, and remount as normal
-                ensure_path_unmounted(extra_path);
+                ensure_path_unmounted("/emmc");
                 ensure_path_unmounted(primary_path);
 
                 ensure_path_mounted(primary_path);
@@ -427,5 +421,11 @@ int run_and_remove_extendedcommand() {
 
     sprintf(tmp, "/tmp/%s", basename(EXTENDEDCOMMAND_SCRIPT));
     int ret;
+#ifdef I_AM_KOUSH
+    if (0 != (ret = before_run_script(tmp))) {
+        ui_print("Error processing ROM Manager script. Please verify that you are performing the backup, restore, or ROM installation from ROM Manager v4.4.0.0 or higher.\n");
+        return ret;
+    }
+#endif
     return run_script(tmp);
 }

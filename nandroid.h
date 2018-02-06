@@ -3,28 +3,108 @@
 
 int nandroid_main(int argc, char** argv);
 int bu_main(int argc, char** argv);
-
 int nandroid_backup(const char* backup_path);
-int nandroid_advanced_backup(const char* backup_path, int boot, int system, int data, int cache);
-int nandroid_advanced_restore(const char* backup_path, int boot, int system, int data, int cache);
+int nandroid_dump(const char* partition);
 int nandroid_restore(const char* backup_path, int restore_boot, int restore_system, int restore_data, int restore_cache, int restore_sdext, int restore_wimax);
-
-#ifdef BOARD_HAS_MTK_CPU
-int nandroid_mtk_backup(const char* backup_path, int uboot, int logo, int nvram, int secro);
-int nandroid_mtk_restore(const char* backup_path, int uboot, int logo, int nvram, int secro);
-#endif
-
-void finish_nandroid_job();
-int user_cancel_nandroid(FILE **fp, const char* backup_file_image, int is_backup, int *nand_starts);
-
+int nandroid_undump(const char* partition);
+void nandroid_dedupe_gc(const char* blob_dir);
 void nandroid_force_backup_format(const char* fmt);
-unsigned int nandroid_get_default_backup_format();
+unsigned nandroid_get_default_backup_format();
+int nandroid_restore_partition(const char* backup_path, const char* root);
+int nandroid_restore_partition_extended(const char* backup_path, const char* mount_point, int umount_when_finished);
 
-#define NANDROID_HIDE_PROGRESS_FILE  "clockworkmod/.hidenandroidprogress"
-#define NANDROID_BACKUP_FORMAT_FILE  "clockworkmod/.default_backup_format"
+
 #define NANDROID_BACKUP_FORMAT_TAR 0
-#define NANDROID_BACKUP_FORMAT_TGZ 1
+#define NANDROID_BACKUP_FORMAT_DUP 1
+#define NANDROID_BACKUP_FORMAT_TGZ 2
 
 #define NANDROID_ERROR_GENERAL 1
+
+// MTK devices support
+#ifndef BOARD_USE_MTK_LAYOUT
+#define BOOT_PARTITION_MOUNT_POINT "/boot"
+#else
+    #ifndef BOARD_MTK_BOOT_LABEL
+    #define BOOT_PARTITION_MOUNT_POINT "/bootimg"
+    #else
+    #define BOOT_PARTITION_MOUNT_POINT BOARD_MTK_BOOT_LABEL
+    #endif
+#endif
+
+
+/**********************************/
+/* Custom nandroid + TWRP backup  */
+/*      Written by PhilZ @xda     */
+/*    For PhilZ Touch Recovery    */
+/*    Keep this credits header    */
+/**********************************/
+
+void finish_nandroid_job();
+int print_and_error(const char* message, int ret);
+int gen_nandroid_md5sum(const char* backup_path);
+int verify_nandroid_md5sum(const char* backup_path);
+int gen_twrp_md5sum(const char* backup_path);
+int check_twrp_md5sum(const char* backup_path);
+int twrp_backup(const char* backup_path);
+int twrp_restore(const char* backup_path);
+int twrp_backup_wrapper(const char* backup_path, const char* backup_file_image, int callback);
+int backupcon_to_file(const char *pathname, const char *filename);
+int restorecon_from_file(const char *filename);
+int restorecon_recursive(const char *pathname, const char *exclude);
+int check_backup_size(const char* backup_path);
+int nandroid_backup_datamedia(const char* backup_path);
+void show_backup_stats(const char* backup_path);
+void check_restore_size(const char* backup_file_image, const char* backup_path);
+
+#define RAW_IMG_FILE 1
+#define RAW_BIN_FILE 2
+#define RESTORE_EFS_TAR 1
+#define RESTORE_EFS_IMG 2
+
+int dd_raw_backup_handler(const char* backup_path, const char* root);
+int dd_raw_restore_handler(const char* backup_path, const char* root);
+// is_custom_backup = 1 when we call custom_backup_restore_menu()
+// that is, it will be 1 when we are in custom backups or in TWRP mode
+extern int is_custom_backup;
+extern int backup_boot;
+extern int backup_recovery;
+extern int backup_system;
+extern int backup_preload;
+extern int backup_data;
+extern int backup_cache;
+extern int backup_sdext;
+extern int backup_wimax;
+extern int backup_efs;
+extern int backup_misc;
+extern int backup_modem;
+extern int backup_radio;
+extern int backup_data_media;
+
+// toggle nandroid compression ratio
+// to change default, just change TAR_GZ_DEFAULT and TAR_GZ_DEFAULT_STR values
+#define TAR_GZ_FAST         1       // "fast"
+#define TAR_GZ_LOW          3       // "low"
+#define TAR_GZ_MEDIUM       5       // "medium"
+#define TAR_GZ_HIGH         7       // "high"
+#define TAR_GZ_DEFAULT      TAR_GZ_LOW
+#define TAR_GZ_DEFAULT_STR  "low"
+
+// set == 1 (default): force yaffs2 to be backed up with default_backup_handler (tar, tar.gz, dup)
+void set_override_yaffs2_wrapper(int set);
+
+// option to reboot after user initiated nandroid operations
+extern int reboot_after_nandroid;
+
+// support .android_secure on external storage
+extern int android_secure_ext;
+int set_android_secure_path(char *and_sec_path);
+
+// Total estimated backup and restore size (nandroid jobs)
+unsigned long long Backup_Size;
+
+// saved Used_Size after initial processing of target backup partition: used to refresh size stats during backup
+unsigned long long Before_Used_Size;
+
+//----------------------------- End Custom nandroid + TWRP backup by PhilZ
 
 #endif

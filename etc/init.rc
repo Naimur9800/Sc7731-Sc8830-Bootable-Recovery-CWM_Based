@@ -12,20 +12,24 @@ on early-init
     start healthd
 
 on init
-    export PATH /sbin:/system/bin:/system/xbin:/su/bin
+    export PATH /sbin:/system/bin
     export ANDROID_ROOT /system
     export ANDROID_DATA /data
     export EXTERNAL_STORAGE /sdcard
 
     symlink /system/etc /etc
 
+    mkdir /boot
+    mkdir /recovery
     mkdir /sdcard
     mkdir /internal_sd
     mkdir /external_sd
+    mkdir /sd-ext
+    mkdir /datadata
+    mkdir /emmc
     mkdir /system
     mkdir /data
     mkdir /cache
-    mkdir /sideload
     mount tmpfs tmpfs /tmp
 
     chown root shell /tmp
@@ -51,9 +55,6 @@ on init
     mkdir /mnt/fuse 0700 root system
     mount tmpfs tmpfs /mnt/fuse mode=0775,gid=1000
 
-    write /proc/sys/kernel/panic_on_oops 1
-    write /proc/sys/vm/max_map_count 1000000
-
 on fs
     mkdir /dev/usb-ffs 0770 shell shell
     mkdir /dev/usb-ffs/adb 0770 shell shell
@@ -61,56 +62,21 @@ on fs
 
     write /sys/class/android_usb/android0/enable 0
     write /sys/class/android_usb/android0/idVendor 18D1
-    write /sys/class/android_usb/android0/idProduct D003
+    write /sys/class/android_usb/android0/idProduct D001
     write /sys/class/android_usb/android0/f_ffs/aliases adb
-    write /sys/class/android_usb/android0/functions mass_storage,adb
+    write /sys/class/android_usb/android0/functions adb
     write /sys/class/android_usb/android0/iManufacturer ${ro.product.manufacturer}
     write /sys/class/android_usb/android0/iProduct ${ro.product.model}
     write /sys/class/android_usb/android0/iSerial ${ro.serialno}
 
+
 on boot
+
     ifup lo
     hostname localhost
     domainname localdomain
 
     class_start default
-
-# Load properties, pre-Android 6.0
-on load_all_props_action
-    load_all_props
-
-# Load properties, Android 6.0+
-on load_system_props_action
-    load_system_props
-
-# Load properties, Android 6.0+, vendor init lives here
-on load_persist_props_action
-    load_persist_props
-
-on firmware_mounts_complete
-    rm /dev/.booting
-
-# Mount filesystems and start core system services.
-on late-init
-    trigger early-fs
-    trigger fs
-    trigger post-fs
-    trigger post-fs-data
-
-    # Load properties, pre-Android 6.0
-    trigger load_all_props_action
-
-    # Load properties, Android 6.0+
-    trigger load_system_props_action
-
-    # Load properties, Android 6.0+, vendor init lives here
-    trigger load_persist_props_action
-
-    # Remove a file to wake up anything waiting for firmware
-    trigger firmware_mounts_complete
-
-    trigger early-boot
-    trigger boot
 
 on property:sys.powerctl=*
     powerctl ${sys.powerctl}
@@ -119,7 +85,7 @@ service ueventd /sbin/ueventd
     critical
     seclabel u:r:ueventd:s0
 
-service healthd /sbin/healthd -r
+service healthd /sbin/healthd -n
     critical
     seclabel u:r:healthd:s0
 
@@ -137,16 +103,28 @@ service adbd /sbin/adbd --root_seclabel=u:r:su:s0 --device_banner=recovery
 service vold /sbin/minivold
     socket vold stream 0660 root mount
     ioprio be 2
-    setenv BLKID_FILE /tmp/vold_blkid.tab
-    seclabel u:r:vold:s0
+    seclabel u:r:recovery:s0
 
-# Always start adbd on userdebug and eng builds
-on property:ro.debuggable=1
-    setprop service.adb.root 1
-    start setup_adbd
+# recovery lock
+on property:sys.usb.recovery_lock=1
+    write /sys/class/android_usb/android0/enable 0
+on property:sys.usb.recovery_lock=0
+    write /sys/class/android_usb/android0/enable 1
 
+# setup_adbd will start adb once it has checked the keys
 on property:service.adb.root=1
     write /sys/class/android_usb/android0/enable 0
     restart adbd
+    #write /sys/class/android_usb/android0/enable 1
+
+on property:sys.storage.ums_enabled=1
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idProduct D003
+    write /sys/class/android_usb/android0/functions mass_storage,adb
     write /sys/class/android_usb/android0/enable 1
 
+on property:sys.storage.ums_enabled=0
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idProduct D001
+    write /sys/class/android_usb/android0/functions adb
+    write /sys/class/android_usb/android0/enable ${service.adb.root}

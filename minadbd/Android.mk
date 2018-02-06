@@ -13,7 +13,6 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	adb.c \
 	fdevent.c \
-	fuse_adb_provider.c \
 	transport.c \
 	transport_usb.c \
 	sockets.c \
@@ -23,10 +22,13 @@ LOCAL_SRC_FILES := \
 
 LOCAL_CFLAGS := -O2 -g -DADB_HOST=0 -Wall -Wno-unused-parameter
 LOCAL_CFLAGS += -D_XOPEN_SOURCE -D_GNU_SOURCE
-LOCAL_C_INCLUDES += $(commands_recovery_local_path)
 
 LOCAL_MODULE := libminadbd
 
-LOCAL_STATIC_LIBRARIES := libfusesideload libcutils libc
+LOCAL_C_INCLUDES += system/extras/ext4_utils system/core/fs_mgr/include
 
+LOCAL_STATIC_LIBRARIES := libcutils libc
 include $(BUILD_STATIC_LIBRARY)
+
+
+

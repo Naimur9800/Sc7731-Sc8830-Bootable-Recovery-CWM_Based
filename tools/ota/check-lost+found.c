@@ -26,7 +26,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
-#include <unistd.h>
 
 #include "private/android_filesystem_config.h"
 
@@ -78,7 +77,7 @@ int main(int argc __attribute__((unused)), char **argv __attribute__((unused))) 
                 snprintf(fn, sizeof(fn), "%s/%s", kPartitions[i], "dirty");
                 fd = open(fn, O_WRONLY|O_CREAT, 0444);
                 if (fd >= 0) {  // Don't sweat it if we can't write the file.
-                    TEMP_FAILURE_RETRY(write(fd, fn, sizeof(fn)));  // write, you know, some data
+                    write(fd, fn, sizeof(fn));  // write, you know, some data
                     close(fd);
                     unlink(fn);
                 }

@@ -41,10 +41,10 @@
 
 #include "mmcutils.h"
 
-#ifdef BOARD_HAS_MTK_CPU
-#ifdef BOARD_NEEDS_MTK_GETSIZE
-#include "mtdutils/mounts.h"
-#endif
+#ifdef BOARD_USE_MTK_LAYOUT
+// for MTK board defines and for Find_Partition_Size()
+#include "../nandroid.h"
+#include "../advanced_functions.h"
 #endif
 
 unsigned ext3_count = 0;
@@ -464,7 +464,7 @@ mmc_raw_copy (const MmcPartition *partition, char *in_file) {
         }
     }
 
-    fsync(fileno(out));
+    fsync(out);
     ret = 0;
 ERROR1:
     fclose ( out );
@@ -507,11 +507,9 @@ mmc_raw_dump_internal (const char* in_file, const char *out_file, unsigned sz) {
         while ( ( ch = fgetc ( in ) ) != EOF )
         {
             fputc ( ch, out );
-#ifdef BOARD_HAS_MTK_CPU
-#ifdef BOARD_NEEDS_MTK_GETSIZE
+#ifdef BOARD_USE_MTK_LAYOUT
             if (++counter == sz)
                 break;
-#endif
 #endif
         }
     }
@@ -526,7 +524,7 @@ mmc_raw_dump_internal (const char* in_file, const char *out_file, unsigned sz) {
         }
     }
 
-    fsync(fileno(out));
+    fsync(out);
     ret = 0;
 ERROR1:
     fclose ( out );
@@ -628,73 +626,31 @@ int cmd_mmc_backup_raw_partition(const char *partition, const char *filename)
     else {
         unsigned sz = 0;
 
-#ifdef BOARD_HAS_MTK_CPU
-//=========================================/
-//=   dynamic get size of MTK partitions  =/
-//=    original work of PhilZ for PhilZ   =/
-//=             Touch Recovery            =/
-//=     ported and adapted by carliv@xda  =/
-//=========================================/
-
-#ifdef BOARD_NEEDS_MTK_GETSIZE
-        if (strstr(partition, "/boot") != NULL) {
-            if (mtk_p_size("/boot") != 0)
+#ifdef BOARD_USE_MTK_LAYOUT
+        // adapted from https://github.com/PhilZ-cwm6/mtk6589_bootable_recovery
+        // take boot and recovery partition sizes into account
+        if (strstr(partition, BOOT_PARTITION_MOUNT_POINT) != NULL) {
+            if (Find_Partition_Size(BOOT_PARTITION_MOUNT_POINT) != 0)
                 return -1;
-            sz = (unsigned)mtk_size;
-            printf("Boot: %s (%u)\n", partition, sz);
+            sz = (unsigned)Total_Size;
+            printf("mtk boot: %s (%u)\n", partition, sz);
         }
 
         if (strstr(partition, "/recovery") != NULL) {
-            if (mtk_p_size("/recovery") != 0)
+            if (Find_Partition_Size("/recovery") != 0)
                 return -1;
-            sz = (unsigned)mtk_size;
-            printf("Recovery: %s (%u)\n", partition, sz);
+            sz = (unsigned)Total_Size;
+            printf("mtk recovery: %s (%u)\n", partition, sz);
         }
 
         if (strstr(partition, "/uboot") != NULL) {
-            if (mtk_p_size("/uboot") != 0)
+            if (Find_Partition_Size("/uboot") != 0)
                 return -1;
-            sz = (unsigned)mtk_size;
-            printf("Uboot: %s (%u)\n", partition, sz);
-        }
-
-        if (strstr(partition, "/lk") != NULL) {
-            if (mtk_p_size("/lk") != 0)
-                return -1;
-            sz = (unsigned)mtk_size;
-            printf("Uboot: %s (%u)\n", partition, sz);
-        }
-
-        if (strstr(partition, "/logo") != NULL) {
-            if (mtk_p_size("/logo") != 0)
-                return -1;
-            sz = (unsigned)mtk_size;
-            printf("Logo: %s (%u)\n", partition, sz);
-        }
-
-        if (strstr(partition, "/nvram") != NULL) {
-            if (mtk_p_size("/nvram") != 0)
-                return -1;
-            sz = (unsigned)mtk_size;
-            printf("Nvram: %s (%u)\n", partition, sz);
-        }
-
-        if (strstr(partition, "/sec_ro") != NULL) {
-            if (mtk_p_size("/sec_ro") != 0)
-                return -1;
-            sz = (unsigned)mtk_size;
-            printf("Secro: %s (%u)\n", partition, sz);
-        }
-
-        if (strstr(partition, "/secro") != NULL) {
-            if (mtk_p_size("/secro") != 0)
-                return -1;
-            sz = (unsigned)mtk_size;
-            printf("Secro: %s (%u)\n", partition, sz);
+            sz = (unsigned)Total_Size;
+            printf("mtk uboot: %s (%u)\n", partition, sz);
         }
 #endif
-#endif
-       
+
         return mmc_raw_dump_internal(partition, filename, sz);
     }
 }

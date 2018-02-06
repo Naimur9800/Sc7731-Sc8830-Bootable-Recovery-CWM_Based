@@ -18,7 +18,6 @@
 #define __EDIFYSCRIPTING_H
 
 int edify_main(int argc, char** argv);
-int extendedcommand_file_exists();
 int run_and_remove_extendedcommand();
 
 #endif // __EDIFYSCRIPTING_H

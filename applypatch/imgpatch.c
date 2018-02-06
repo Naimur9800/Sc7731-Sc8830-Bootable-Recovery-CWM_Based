@@ -18,10 +18,8 @@
 // format.
 
 #include <stdio.h>
-#include <sys/cdefs.h>
 #include <sys/stat.h>
 #include <errno.h>
-#include <malloc.h>
 #include <unistd.h>
 #include <string.h>
 
@@ -37,7 +35,7 @@
  * file, and update the SHA context with the output data as well.
  * Return 0 on success.
  */
-int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size __unused,
+int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size,
                     const Value* patch,
                     SinkFn sink, void* token, SHA_CTX* ctx,
                     const Value* bonus_data) {
@@ -96,7 +94,7 @@ int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size __unused,
                 printf("failed to read chunk %d raw data\n", i);
                 return -1;
             }
-            if (ctx) SHA_update(ctx, patch->data + pos, data_len);
+            SHA_update(ctx, patch->data + pos, data_len);
             if (sink((unsigned char*)patch->data + pos,
                      data_len, token) != data_len) {
                 printf("failed to write chunk %d raw data\n", i);
@@ -218,7 +216,7 @@ int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size __unused,
                            (long)have);
                     return -1;
                 }
-                if (ctx) SHA_update(ctx, temp_data, have);
+                SHA_update(ctx, temp_data, have);
             } while (ret != Z_STREAM_END);
             deflateEnd(&strm);
 

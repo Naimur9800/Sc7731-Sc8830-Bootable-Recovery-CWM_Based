@@ -33,20 +33,19 @@
 #include <sys/xattr.h>
 #include <linux/xattr.h>
 #include <inttypes.h>
-#include <blkid/blkid.h>
 
 #include "bootloader.h"
-#include <cutils/misc.h>
+#include "applypatch/applypatch.h"
 #include "cutils/android_reboot.h"
+#include "cutils/misc.h"
 #include "cutils/properties.h"
 #include "edify/expr.h"
 #include "mincrypt/sha.h"
 #include "minzip/DirUtil.h"
+#include "flashutils/flashutils.h"
 #include "mtdutils/mounts.h"
 #include "mtdutils/mtdutils.h"
 #include "updater.h"
-#include "install.h"
-#include "applypatch/applypatch.h"
 
 #include <dirent.h>
 
@@ -55,41 +54,7 @@ static int totalbaks = 0;
 
 #ifdef USE_EXT4
 #include "make_ext4fs.h"
-#include "wipe.h"
 #endif
-
-void uiPrint(State* state, char* buffer) {
-    char* line = strtok(buffer, "\n");
-    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
-    while (line) {
-        fprintf(ui->cmd_pipe, "ui_print %s\n", line);
-        line = strtok(NULL, "\n");
-    }
-    fprintf(ui->cmd_pipe, "ui_print\n");
-}
-
-__attribute__((__format__(printf, 2, 3))) __nonnull((2))
-void uiPrintf(State* state, const char* format, ...) {
-    char error_msg[1024];
-    va_list ap;
-    va_start(ap, format);
-    vsnprintf(error_msg, sizeof(error_msg), format, ap);
-    va_end(ap);
-    uiPrint(state, error_msg);
-}
-
-// Take a sha-1 digest and return it as a newly-allocated hex string.
-char* PrintSha1(const uint8_t* digest) {
-    char* buffer = malloc(SHA_DIGEST_SIZE*2 + 1);
-    int i;
-    const char* alphabet = "0123456789abcdef";
-    for (i = 0; i < SHA_DIGEST_SIZE; ++i) {
-        buffer[i*2] = alphabet[(digest[i] >> 4) & 0xf];
-        buffer[i*2+1] = alphabet[digest[i] & 0xf];
-    }
-    buffer[i*2] = '\0';
-    return buffer;
-}
 
 // mount(fs_type, partition_type, location, mount_point)
 //
@@ -97,27 +62,16 @@ char* PrintSha1(const uint8_t* digest) {
 //    fs_type="ext4"   partition_type="EMMC"    location=device
 Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* result = NULL;
-    if (argc != 4 && argc != 5) {
-        return ErrorAbort(state, "%s() expects 4-5 args, got %d", name, argc);
+    if (argc != 4) {
+        return ErrorAbort(state, "%s() expects 4 args, got %d", name, argc);
     }
     char* fs_type;
     char* partition_type;
     char* location;
     char* mount_point;
-    char* mount_options;
-    bool has_mount_options;
-    if (argc == 5) {
-        has_mount_options = true;
-        if (ReadArgs(state, argv, 5, &fs_type, &partition_type,
-                 &location, &mount_point, &mount_options) < 0) {
-            return NULL;
-        }
-    } else {
-        has_mount_options = false;
-        if (ReadArgs(state, argv, 4, &fs_type, &partition_type,
+    if (ReadArgs(state, argv, 4, &fs_type, &partition_type,
                  &location, &mount_point) < 0) {
-            return NULL;
-        }
+        return NULL;
     }
 
     if (strlen(fs_type) == 0) {
@@ -157,33 +111,22 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
         const MtdPartition* mtd;
         mtd = mtd_find_partition_by_name(location);
         if (mtd == NULL) {
-            uiPrintf(state, "%s: no mtd partition named \"%s\"",
+            printf("%s: no mtd partition named \"%s\"",
                     name, location);
             result = strdup("");
             goto done;
         }
         if (mtd_mount_partition(mtd, mount_point, fs_type, 0 /* rw */) != 0) {
-            uiPrintf(state, "mtd mount of %s failed: %s\n",
+            printf("mtd mount of %s failed: %s\n",
                     location, strerror(errno));
             result = strdup("");
             goto done;
         }
         result = mount_point;
     } else {
-        char *detected_fs_type = blkid_get_tag_value(NULL, "TYPE", location);
-        if (detected_fs_type) {
-            uiPrintf(state, "detected filesystem %s for %s\n",
-                    detected_fs_type, location);
-            fs_type = detected_fs_type;
-        } else {
-            uiPrintf(state, "could not detect filesystem for %s, assuming %s\n",
-                    location, fs_type);
-        }
-
         if (mount(location, mount_point, fs_type,
-                  MS_NOATIME | MS_NODEV | MS_NODIRATIME,
-                  has_mount_options ? mount_options : "") < 0) {
-            uiPrintf(state, "%s: failed to mount %s at %s: %s\n",
+                  MS_NOATIME | MS_NODEV | MS_NODIRATIME, "") < 0) {
+            printf("%s: failed to mount %s at %s: %s\n",
                     name, location, mount_point, strerror(errno));
             result = strdup("");
         } else {
@@ -196,7 +139,6 @@ done:
     free(partition_type);
     free(location);
     if (result != mount_point) free(mount_point);
-    if (has_mount_options) free(mount_options);
     return StringValue(result);
 }
 
@@ -247,14 +189,10 @@ Value* UnmountFn(const char* name, State* state, int argc, Expr* argv[]) {
     scan_mounted_volumes();
     const MountedVolume* vol = find_mounted_volume_by_mount_point(mount_point);
     if (vol == NULL) {
-        uiPrintf(state, "unmount of %s failed; no such volume\n", mount_point);
+        printf("unmount of %s failed; no such volume\n", mount_point);
         result = strdup("");
     } else {
-        int ret = unmount_mounted_volume(vol);
-        if (ret != 0) {
-           uiPrintf(state, "unmount of %s failed (%d): %s\n",
-                    mount_point, ret, strerror(errno));
-        }
+        unmount_mounted_volume(vol);
         result = mount_point;
     }
 
@@ -263,26 +201,12 @@ done:
     return StringValue(result);
 }
 
-static int exec_cmd(const char* path, char* const argv[]) {
-    int status;
-    pid_t child;
-    if ((child = vfork()) == 0) {
-        execv(path, argv);
-        _exit(-1);
-    }
-    waitpid(child, &status, 0);
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        //printf("%s failed with status %d\n", path, WEXITSTATUS(status));
-    }
-    return WEXITSTATUS(status);
-}
 
 // format(fs_type, partition_type, location, fs_size, mount_point)
 //
 //    fs_type="yaffs2" partition_type="MTD"     location=partition fs_size=<bytes> mount_point=<location>
 //    fs_type="ext4"   partition_type="EMMC"    location=device    fs_size=<bytes> mount_point=<location>
-//    fs_type="f2fs"   partition_type="EMMC"    location=device    fs_size=<bytes> mount_point=<location>
-//    if fs_size == 0, then make fs uses the entire partition.
+//    if fs_size == 0, then make_ext4fs uses the entire partition.
 //    if fs_size > 0, that is the size to use
 //    if fs_size < 0, then reserve that many bytes at the end of the partition
 Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
@@ -323,25 +247,25 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
         mtd_scan_partitions();
         const MtdPartition* mtd = mtd_find_partition_by_name(location);
         if (mtd == NULL) {
-            fprintf(stderr, "%s: no mtd partition named \"%s\"",
+            printf("%s: no mtd partition named \"%s\"",
                     name, location);
             result = strdup("");
             goto done;
         }
         MtdWriteContext* ctx = mtd_write_partition(mtd);
         if (ctx == NULL) {
-            fprintf(stderr, "%s: can't write \"%s\"", name, location);
+            printf("%s: can't write \"%s\"", name, location);
             result = strdup("");
             goto done;
         }
         if (mtd_erase_blocks(ctx, -1) == -1) {
             mtd_write_close(ctx);
-            fprintf(stderr, "%s: failed to erase \"%s\"", name, location);
+            printf("%s: failed to erase \"%s\"", name, location);
             result = strdup("");
             goto done;
         }
         if (mtd_write_close(ctx) != 0) {
-            fprintf(stderr, "%s: failed to close \"%s\"", name, location);
+            printf("%s: failed to close \"%s\"", name, location);
             result = strdup("");
             goto done;
         }
@@ -357,24 +281,6 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
         }
         result = location;
 #endif
-    } else if (strcmp(fs_type, "f2fs") == 0) {
-        char *num_sectors;
-        if (asprintf(&num_sectors, "%lld", atoll(fs_size) / 512) <= 0) {
-            printf("format_volume: failed to create %s command for %s\n", fs_type, location);
-            result = strdup("");
-            goto done;
-        }
-        const char *f2fs_path = "/sbin/mkfs.f2fs";
-        const char* const f2fs_argv[] = {"mkfs.f2fs", "-t", "-d1", location, num_sectors, NULL};
-        int status = exec_cmd(f2fs_path, (char* const*)f2fs_argv);
-        free(num_sectors);
-        if (status != 0) {
-            printf("%s: mkfs.f2fs failed (%d) on %s",
-                    name, status, location);
-            result = strdup("");
-            goto done;
-        }
-        result = location;
     } else {
         printf("%s: unsupported fs_type \"%s\" partition_type \"%s\"",
                 name, fs_type, partition_type);
@@ -404,17 +310,13 @@ Value* RenameFn(const char* name, State* state, int argc, Expr* argv[]) {
         goto done;
     }
     if (strlen(dst_name) == 0) {
-        ErrorAbort(state, "dst_name argument to %s() can't be empty", name);
+        ErrorAbort(state, "dst_name argument to %s() can't be empty",
+                   name);
         goto done;
     }
-    if (make_parents(dst_name) != 0) {
-        ErrorAbort(state, "Creating parent of %s failed, error %s",
-          dst_name, strerror(errno));
-    } else if (access(dst_name, F_OK) == 0 && access(src_name, F_OK) != 0) {
-        // File was already moved
-        result = dst_name;
-    } else if (rename(src_name, dst_name) != 0) {
-        ErrorAbort(state, "Rename of %s to %s failed, error %s",
+
+    if (rename(src_name, dst_name) != 0) {
+        ErrorAbort(state, "Rename of %s() to %s() failed, error %s()",
           src_name, dst_name, strerror(errno));
     } else {
         result = dst_name;
@@ -526,32 +428,28 @@ Value* PackageExtractDirFn(const char* name, State* state,
 //   function (the char* returned is actually a FileContents*).
 Value* PackageExtractFileFn(const char* name, State* state,
                            int argc, Expr* argv[]) {
-    if (argc < 1 || argc > 2) {
+    if (argc != 1 && argc != 2) {
         return ErrorAbort(state, "%s() expects 1 or 2 args, got %d",
                           name, argc);
     }
     bool success = false;
-
-    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
-
     if (argc == 2) {
         // The two-argument version extracts to a file.
-
-        ZipArchive* za = ((UpdaterInfo*)(state->cookie))->package_zip;
 
         char* zip_path;
         char* dest_path;
         if (ReadArgs(state, argv, 2, &zip_path, &dest_path) < 0) return NULL;
 
+        ZipArchive* za = ((UpdaterInfo*)(state->cookie))->package_zip;
         const ZipEntry* entry = mzFindZipEntry(za, zip_path);
         if (entry == NULL) {
-            fprintf(stderr, "%s: no %s in package\n", name, zip_path);
+            printf("%s: no %s in package\n", name, zip_path);
             goto done2;
         }
 
         FILE* f = fopen(dest_path, "wb");
         if (f == NULL) {
-            fprintf(stderr, "%s: can't open %s for write: %s\n",
+            printf("%s: can't open %s for write: %s\n",
                     name, dest_path, strerror(errno));
             goto done2;
         }
@@ -577,14 +475,14 @@ Value* PackageExtractFileFn(const char* name, State* state,
         ZipArchive* za = ((UpdaterInfo*)(state->cookie))->package_zip;
         const ZipEntry* entry = mzFindZipEntry(za, zip_path);
         if (entry == NULL) {
-            fprintf(stderr, "%s: no %s in package\n", name, zip_path);
+            printf("%s: no %s in package\n", name, zip_path);
             goto done1;
         }
 
         v->size = mzGetZipEntryUncompLen(entry);
         v->data = malloc(v->size);
         if (v->data == NULL) {
-            fprintf(stderr, "%s: failed to allocate %ld bytes for %s\n",
+            printf("%s: failed to allocate %ld bytes for %s\n",
                     name, (long)v->size, zip_path);
             goto done1;
         }
@@ -611,13 +509,13 @@ static int make_parents(char* name) {
         *p = '\0';
         if (make_parents(name) < 0) return -1;
         int result = mkdir(name, 0700);
-        if (result == 0) fprintf(stderr, "symlink(): created [%s]\n", name);
+        if (result == 0) printf("symlink(): created [%s]\n", name);
         *p = '/';
         if (result == 0 || errno == EEXIST) {
             // successfully created or already existed; we're done
             return 0;
         } else {
-            fprintf(stderr, "failed to mkdir %s: %s\n", name, strerror(errno));
+            printf("failed to mkdir %s: %s\n", name, strerror(errno));
             return -1;
         }
     }
@@ -645,18 +543,18 @@ Value* SymlinkFn(const char* name, State* state, int argc, Expr* argv[]) {
     for (i = 0; i < argc-1; ++i) {
         if (unlink(srcs[i]) < 0) {
             if (errno != ENOENT) {
-                fprintf(stderr, "%s: failed to remove %s: %s\n",
+                printf("%s: failed to remove %s: %s\n",
                         name, srcs[i], strerror(errno));
                 ++bad;
             }
         }
         if (make_parents(srcs[i])) {
-            fprintf(stderr, "%s: failed to symlink %s to %s: making parents failed\n",
+            printf("%s: failed to symlink %s to %s: making parents failed\n",
                     name, srcs[i], target);
             ++bad;
         }
         if (symlink(target, srcs[i]) < 0) {
-            fprintf(stderr, "%s: failed to symlink %s to %s: %s\n",
+            printf("%s: failed to symlink %s to %s: %s\n",
                     name, srcs[i], target, strerror(errno));
             ++bad;
         }
@@ -768,7 +666,7 @@ struct perm_parsed_args {
     uint64_t capabilities;
 };
 
-static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** args) {
+static struct perm_parsed_args ParsePermArgs(int argc, char** args) {
     int i;
     struct perm_parsed_args parsed;
     int bad = 0;
@@ -783,7 +681,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
                 parsed.uid = uid;
                 parsed.has_uid = true;
             } else {
-                uiPrintf(state, "ParsePermArgs: invalid UID \"%s\"\n", args[i + 1]);
+                printf("ParsePermArgs: invalid UID \"%s\"\n", args[i + 1]);
                 bad++;
             }
             continue;
@@ -794,7 +692,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
                 parsed.gid = gid;
                 parsed.has_gid = true;
             } else {
-                uiPrintf(state, "ParsePermArgs: invalid GID \"%s\"\n", args[i + 1]);
+                printf("ParsePermArgs: invalid GID \"%s\"\n", args[i + 1]);
                 bad++;
             }
             continue;
@@ -805,7 +703,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
                 parsed.mode = mode;
                 parsed.has_mode = true;
             } else {
-                uiPrintf(state, "ParsePermArgs: invalid mode \"%s\"\n", args[i + 1]);
+                printf("ParsePermArgs: invalid mode \"%s\"\n", args[i + 1]);
                 bad++;
             }
             continue;
@@ -816,7 +714,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
                 parsed.dmode = mode;
                 parsed.has_dmode = true;
             } else {
-                uiPrintf(state, "ParsePermArgs: invalid dmode \"%s\"\n", args[i + 1]);
+                printf("ParsePermArgs: invalid dmode \"%s\"\n", args[i + 1]);
                 bad++;
             }
             continue;
@@ -827,7 +725,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
                 parsed.fmode = mode;
                 parsed.has_fmode = true;
             } else {
-                uiPrintf(state, "ParsePermArgs: invalid fmode \"%s\"\n", args[i + 1]);
+                printf("ParsePermArgs: invalid fmode \"%s\"\n", args[i + 1]);
                 bad++;
             }
             continue;
@@ -838,7 +736,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
                 parsed.capabilities = capabilities;
                 parsed.has_capabilities = true;
             } else {
-                uiPrintf(state, "ParsePermArgs: invalid capabilities \"%s\"\n", args[i + 1]);
+                printf("ParsePermArgs: invalid capabilities \"%s\"\n", args[i + 1]);
                 bad++;
             }
             continue;
@@ -848,7 +746,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
                 parsed.selabel = args[i+1];
                 parsed.has_selabel = true;
             } else {
-                uiPrintf(state, "ParsePermArgs: invalid selabel \"%s\"\n", args[i + 1]);
+                printf("ParsePermArgs: invalid selabel \"%s\"\n", args[i + 1]);
                 bad++;
             }
             continue;
@@ -865,71 +763,75 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
 }
 
 static int ApplyParsedPerms(
-        State * state,
         const char* filename,
         const struct stat *statptr,
         struct perm_parsed_args parsed)
 {
     int bad = 0;
 
-    if (parsed.has_selabel) {
-        if (lsetfilecon(filename, parsed.selabel) != 0) {
-            uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
-                    filename, parsed.selabel, strerror(errno));
-            bad++;
-        }
-    }
-
     /* ignore symlinks */
     if (S_ISLNK(statptr->st_mode)) {
-        return bad;
+        return 0;
     }
 
     if (parsed.has_uid) {
         if (chown(filename, parsed.uid, -1) < 0) {
-            uiPrintf(state, "ApplyParsedPerms: chown of %s to %d failed: %s\n",
-                    filename, parsed.uid, strerror(errno));
+            printf("ApplyParsedPerms: chown of %s to %d failed: %s\n",
+                   filename, parsed.uid, strerror(errno));
             bad++;
         }
     }
 
     if (parsed.has_gid) {
         if (chown(filename, -1, parsed.gid) < 0) {
-            uiPrintf(state, "ApplyParsedPerms: chgrp of %s to %d failed: %s\n",
-                    filename, parsed.gid, strerror(errno));
+            printf("ApplyParsedPerms: chgrp of %s to %d failed: %s\n",
+                   filename, parsed.gid, strerror(errno));
             bad++;
         }
     }
 
     if (parsed.has_mode) {
         if (chmod(filename, parsed.mode) < 0) {
-            uiPrintf(state, "ApplyParsedPerms: chmod of %s to %d failed: %s\n",
-                    filename, parsed.mode, strerror(errno));
+            printf("ApplyParsedPerms: chmod of %s to %d failed: %s\n",
+                   filename, parsed.mode, strerror(errno));
             bad++;
         }
     }
 
     if (parsed.has_dmode && S_ISDIR(statptr->st_mode)) {
         if (chmod(filename, parsed.dmode) < 0) {
-            uiPrintf(state, "ApplyParsedPerms: chmod of %s to %d failed: %s\n",
-                    filename, parsed.dmode, strerror(errno));
+            printf("ApplyParsedPerms: chmod of %s to %d failed: %s\n",
+                   filename, parsed.dmode, strerror(errno));
             bad++;
         }
     }
 
     if (parsed.has_fmode && S_ISREG(statptr->st_mode)) {
         if (chmod(filename, parsed.fmode) < 0) {
-            uiPrintf(state, "ApplyParsedPerms: chmod of %s to %d failed: %s\n",
+            printf("ApplyParsedPerms: chmod of %s to %d failed: %s\n",
                    filename, parsed.fmode, strerror(errno));
+            bad++;
+        }
+    }
+
+    if (parsed.has_selabel) {
+        // TODO: Don't silently ignore ENOTSUP
+        if (lsetfilecon(filename, parsed.selabel) && (errno != ENOTSUP)) {
+            printf("ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
+                   filename, parsed.selabel, strerror(errno));
             bad++;
         }
     }
 
     if (parsed.has_capabilities && S_ISREG(statptr->st_mode)) {
         if (parsed.capabilities == 0) {
-            if ((removexattr(filename, XATTR_NAME_CAPS) == -1) && (errno != ENODATA)) {
+            if ((removexattr(filename, XATTR_NAME_CAPS) == -1) && ((errno != ENODATA)
+#ifdef RECOVERY_CANT_USE_CONFIG_EXT4_FS_XATTR
+                 && (errno != EOPNOTSUPP)
+#endif
+               )) {
                 // Report failure unless it's ENODATA (attribute not set)
-                uiPrintf(state, "ApplyParsedPerms: removexattr of %s to %" PRIx64 " failed: %s\n",
+                printf("ApplyParsedPerms: removexattr of %s to %" PRIx64 " failed: %s\n",
                        filename, parsed.capabilities, strerror(errno));
                 bad++;
             }
@@ -941,9 +843,13 @@ static int ApplyParsedPerms(
             cap_data.data[0].inheritable = 0;
             cap_data.data[1].permitted = (uint32_t) (parsed.capabilities >> 32);
             cap_data.data[1].inheritable = 0;
-            if (setxattr(filename, XATTR_NAME_CAPS, &cap_data, sizeof(cap_data), 0) < 0) {
-                uiPrintf(state, "ApplyParsedPerms: setcap of %s to %" PRIx64 " failed: %s\n",
-                        filename, parsed.capabilities, strerror(errno));
+            if (setxattr(filename, XATTR_NAME_CAPS, &cap_data, sizeof(cap_data), 0) < 0
+#ifdef RECOVERY_CANT_USE_CONFIG_EXT4_FS_XATTR
+                 && (errno != EOPNOTSUPP)
+#endif
+               ) {
+                printf("ApplyParsedPerms: setcap of %s to %" PRIx64 " failed: %s\n",
+                       filename, parsed.capabilities, strerror(errno));
                 bad++;
             }
         }
@@ -955,11 +861,10 @@ static int ApplyParsedPerms(
 // nftw doesn't allow us to pass along context, so we need to use
 // global variables.  *sigh*
 static struct perm_parsed_args recursive_parsed_args;
-static State* recursive_state;
 
 static int do_SetMetadataRecursive(const char* filename, const struct stat *statptr,
         int fileflags, struct FTW *pfwt) {
-    return ApplyParsedPerms(recursive_state, filename, statptr, recursive_parsed_args);
+    return ApplyParsedPerms(filename, statptr, recursive_parsed_args);
 }
 
 static Value* SetMetadataFn(const char* name, State* state, int argc, Expr* argv[]) {
@@ -984,16 +889,14 @@ static Value* SetMetadataFn(const char* name, State* state, int argc, Expr* argv
         goto done;
     }
 
-    struct perm_parsed_args parsed = ParsePermArgs(state, argc, args);
+    struct perm_parsed_args parsed = ParsePermArgs(argc, args);
 
     if (recursive) {
         recursive_parsed_args = parsed;
-        recursive_state = state;
         bad += nftw(args[0], do_SetMetadataRecursive, 30, FTW_CHDIR | FTW_DEPTH | FTW_PHYS);
         memset(&recursive_parsed_args, 0, sizeof(recursive_parsed_args));
-        recursive_state = NULL;
     } else {
-        bad += ApplyParsedPerms(state, args[0], &sb, parsed);
+        bad += ApplyParsedPerms(args[0], &sb, parsed);
     }
 
 done:
@@ -1032,8 +935,8 @@ Value* GetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
 // file_getprop(file, key)
 //
 //   interprets 'file' as a getprop-style file (key=value pairs, one
-//   per line. # comment lines,blank lines, lines without '=' ignored),
-//   and returns the value for 'key' (or "" if it isn't defined).
+//   per line, # comment lines and blank lines okay), and returns the value
+//   for 'key' (or "" if it isn't defined).
 Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* result = NULL;
     char* buffer = NULL;
@@ -1091,7 +994,9 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
 
         char* equal = strchr(line, '=');
         if (equal == NULL) {
-            continue;
+            ErrorAbort(state, "%s: malformed line \"%s\": %s not a prop file?",
+                       name, line, filename);
+            goto done;
         }
 
         // trim whitespace between key and '='
@@ -1130,7 +1035,7 @@ static bool write_raw_image_cb(const unsigned char* data,
                                int data_len, void* ctx) {
     int r = mtd_write_data((MtdWriteContext*)ctx, (const char *)data, data_len);
     if (r == data_len) return true;
-    fprintf(stderr, "%s\n", strerror(errno));
+    printf("%s\n", strerror(errno));
     return false;
 }
 
@@ -1159,65 +1064,13 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         goto done;
     }
 
-    mtd_scan_partitions();
-    const MtdPartition* mtd = mtd_find_partition_by_name(partition);
-    if (mtd == NULL) {
-        printf("%s: no mtd partition named \"%s\"\n", name, partition);
+    char* filename = contents->data;
+    if (0 == restore_raw_partition(NULL, partition, filename))
+        result = strdup(partition);
+    else {
         result = strdup("");
         goto done;
     }
-
-    MtdWriteContext* ctx = mtd_write_partition(mtd);
-    if (ctx == NULL) {
-        printf("%s: can't write mtd partition \"%s\"\n",
-                name, partition);
-        result = strdup("");
-        goto done;
-    }
-
-    bool success;
-
-    if (contents->type == VAL_STRING) {
-        // we're given a filename as the contents
-        char* filename = contents->data;
-        FILE* f = fopen(filename, "rb");
-        if (f == NULL) {
-            printf("%s: can't open %s: %s\n",
-                    name, filename, strerror(errno));
-            result = strdup("");
-            goto done;
-        }
-
-        success = 1;
-        char* buffer = malloc(BUFSIZ);
-        int read;
-        while (success && (read = fread(buffer, 1, BUFSIZ, f)) > 0) {
-            int wrote = mtd_write_data(ctx, buffer, read);
-            success = success && (wrote == read);
-        }
-        free(buffer);
-        fclose(f);
-    } else {
-        // we're given a blob as the contents
-        ssize_t wrote = mtd_write_data(ctx, contents->data, contents->size);
-        success = (wrote == contents->size);
-    }
-    if (!success) {
-        printf("mtd_write_data to %s failed: %s\n",
-                partition, strerror(errno));
-    }
-
-    if (mtd_erase_blocks(ctx, -1) == -1) {
-        printf("%s: error erasing blocks of %s\n", name, partition);
-    }
-    if (mtd_write_close(ctx) != 0) {
-        printf("%s: error closing write of %s\n", name, partition);
-    }
-
-    printf("%s %s partition\n",
-           success ? "wrote" : "failed to write", partition);
-
-    result = success ? partition : strdup("");
 
 done:
     if (result != partition) FreeValue(partition_value);
@@ -1396,7 +1249,15 @@ Value* UIPrintFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
     free(args);
     buffer[size] = '\0';
-    uiPrint(state, buffer);
+
+    char* line = strtok(buffer, "\n");
+    while (line) {
+        fprintf(((UpdaterInfo*)(state->cookie))->cmd_pipe,
+                "ui_print %s\n", line);
+        line = strtok(NULL, "\n");
+    }
+    fprintf(((UpdaterInfo*)(state->cookie))->cmd_pipe, "ui_print\n");
+
     return StringValue(buffer);
 }
 
@@ -1477,23 +1338,23 @@ Value* RunProgramFn(const char* name, State* state, int argc, Expr* argv[]) {
     memcpy(args2, args, sizeof(char*) * argc);
     args2[argc] = NULL;
 
-    fprintf(stderr, "about to run program [%s] with %d args\n", args2[0], argc);
+    printf("about to run program [%s] with %d args\n", args2[0], argc);
 
     pid_t child = fork();
     if (child == 0) {
         execv(args2[0], args2);
-        fprintf(stderr, "run_program: execv failed: %s\n", strerror(errno));
+        printf("run_program: execv failed: %s\n", strerror(errno));
         _exit(1);
     }
     int status;
     waitpid(child, &status, 0);
     if (WIFEXITED(status)) {
         if (WEXITSTATUS(status) != 0) {
-            fprintf(stderr, "run_program: child exited with status %d\n",
+            printf("run_program: child exited with status %d\n",
                     WEXITSTATUS(status));
         }
     } else if (WIFSIGNALED(status)) {
-        fprintf(stderr, "run_program: child terminated by signal %d\n",
+        printf("run_program: child terminated by signal %d\n",
                 WTERMSIG(status));
     }
 
@@ -1508,6 +1369,19 @@ Value* RunProgramFn(const char* name, State* state, int argc, Expr* argv[]) {
     sprintf(buffer, "%d", status);
 
     return StringValue(strdup(buffer));
+}
+
+// Take a sha-1 digest and return it as a newly-allocated hex string.
+static char* PrintSha1(uint8_t* digest) {
+    char* buffer = malloc(SHA_DIGEST_SIZE*2 + 1);
+    int i;
+    const char* alphabet = "0123456789abcdef";
+    for (i = 0; i < SHA_DIGEST_SIZE; ++i) {
+        buffer[i*2] = alphabet[(digest[i] >> 4) & 0xf];
+        buffer[i*2+1] = alphabet[digest[i] & 0xf];
+    }
+    buffer[i*2] = '\0';
+    return buffer;
 }
 
 // sha1_check(data)
@@ -1529,7 +1403,6 @@ Value* Sha1CheckFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     if (args[0]->size < 0) {
-        fprintf(stderr, "%s(): no file contents received", name);
         return StringValue(strdup(""));
     }
     uint8_t digest[SHA_DIGEST_SIZE];
@@ -1544,12 +1417,12 @@ Value* Sha1CheckFn(const char* name, State* state, int argc, Expr* argv[]) {
     uint8_t* arg_digest = malloc(SHA_DIGEST_SIZE);
     for (i = 1; i < argc; ++i) {
         if (args[i]->type != VAL_STRING) {
-            fprintf(stderr, "%s(): arg %d is not a string; skipping",
+            printf("%s(): arg %d is not a string; skipping",
                     name, i);
         } else if (ParseSha1(args[i]->data, arg_digest) != 0) {
             // Warn about bad args and skip them.
-            fprintf(stderr, "%s(): error parsing \"%s\" as sha-1; skipping",
-                    name, args[i]->data);
+            printf("%s(): error parsing \"%s\" as sha-1; skipping",
+                   name, args[i]->data);
         } else if (memcmp(digest, arg_digest, SHA_DIGEST_SIZE) == 0) {
             break;
         }
@@ -1581,7 +1454,7 @@ Value* ReadFileFn(const char* name, State* state, int argc, Expr* argv[]) {
     v->type = VAL_BLOB;
 
     FileContents fc;
-    if (LoadFileContents(filename, &fc) != 0) {
+    if (LoadFileContents(filename, &fc, RETOUCH_DONT_MASK) != 0) {
         free(filename);
         v->size = -1;
         v->data = NULL;
@@ -1689,9 +1562,11 @@ Value* SetStageFn(const char* name, State* state, int argc, Expr* argv[]) {
 
 // Return the value most recently saved with SetStageFn.  The argument
 // is the block device for the misc partition.
+// Note we accept two arguments for compatibility with existing ota
+// generators that expect the upstream behavior.
 Value* GetStageFn(const char* name, State* state, int argc, Expr* argv[]) {
-    if (argc != 1) {
-        return ErrorAbort(state, "%s() expects 1 arg, got %d", name, argc);
+    if (argc != 1 && argc != 2) {
+        return ErrorAbort(state, "%s() expects 1 or 2 args, got %d", name, argc);
     }
 
     char* filename;
@@ -1710,67 +1585,6 @@ Value* GetStageFn(const char* name, State* state, int argc, Expr* argv[]) {
     return StringValue(strdup(buffer));
 }
 
-Value* WipeBlockDeviceFn(const char* name, State* state, int argc, Expr* argv[]) {
-    if (argc != 2) {
-        return ErrorAbort(state, "%s() expects 2 args, got %d", name, argc);
-    }
-
-    char* filename;
-    char* len_str;
-    if (ReadArgs(state, argv, 2, &filename, &len_str) < 0) return NULL;
-
-    size_t len = strtoull(len_str, NULL, 0);
-    int fd = open(filename, O_WRONLY, 0644);
-    int success = wipe_block_device(fd, len);
-
-    free(filename);
-    free(len_str);
-
-    close(fd);
-
-    return StringValue(strdup(success ? "t" : ""));
-}
-
-Value* EnableRebootFn(const char* name, State* state, int argc, Expr* argv[]) {
-    if (argc != 0) {
-        return ErrorAbort(state, "%s() expects no args, got %d", name, argc);
-    }
-    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
-    fprintf(ui->cmd_pipe, "enable_reboot\n");
-    return StringValue(strdup("t"));
-}
-
-Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
-    if (argc == 0) {
-        return ErrorAbort(state, "%s() expects args, got %d", name, argc);
-    }
-
-    char** args = ReadVarArgs(state, argc, argv);
-    if (args == NULL) {
-        return ErrorAbort(state, "%s() could not read args", name);
-    }
-
-    int i;
-    char** args2 = malloc(sizeof(char*) * (argc+1));
-    // Tune2fs expects the program name as its args[0]
-    args2[0] = strdup(name);
-    for (i = 0; i < argc; ++i) {
-       args2[i + 1] = args[i];
-    }
-    int result = tune2fs_main(argc + 1, args2);
-    for (i = 0; i < argc; ++i) {
-        free(args[i]);
-    }
-    free(args);
-
-    free(args2[0]);
-    free(args2);
-    if (result != 0) {
-        return ErrorAbort(state, "%s() returned error code %d", name, result);
-    }
-    return StringValue(strdup("t"));
-}
-
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
     RegisterFunction("is_mounted", IsMountedFn);
@@ -1783,6 +1597,11 @@ void RegisterInstallFunctions() {
     RegisterFunction("package_extract_dir", PackageExtractDirFn);
     RegisterFunction("package_extract_file", PackageExtractFileFn);
     RegisterFunction("symlink", SymlinkFn);
+
+    // Maybe, at some future point, we can delete these functions? They have been
+    // replaced by perm_set and perm_set_recursive.
+    RegisterFunction("set_perm", SetPermFn);
+    RegisterFunction("set_perm_recursive", SetPermFn);
 
     // Usage:
     //   set_metadata("filename", "key1", "value1", "key2", "value2", ...)
@@ -1804,8 +1623,6 @@ void RegisterInstallFunctions() {
     RegisterFunction("apply_patch_check", ApplyPatchCheckFn);
     RegisterFunction("apply_patch_space", ApplyPatchSpaceFn);
 
-    RegisterFunction("wipe_block_device", WipeBlockDeviceFn);
-
     RegisterFunction("read_file", ReadFileFn);
     RegisterFunction("sha1_check", Sha1CheckFn);
     RegisterFunction("rename", RenameFn);
@@ -1815,13 +1632,9 @@ void RegisterInstallFunctions() {
     RegisterFunction("ui_print", UIPrintFn);
 
     RegisterFunction("run_program", RunProgramFn);
+    RegisterFunction("collect_backup_data", CollectBackupDataFn);
 
     RegisterFunction("reboot_now", RebootNowFn);
     RegisterFunction("get_stage", GetStageFn);
     RegisterFunction("set_stage", SetStageFn);
-
-    RegisterFunction("enable_reboot", EnableRebootFn);
-    RegisterFunction("tune2fs", Tune2FsFn);
-
-    RegisterFunction("collect_backup_data", CollectBackupDataFn);
 }

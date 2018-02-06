@@ -3,7 +3,7 @@ ifneq ($(TARGET_SIMULATOR),true)
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
-BOARD_RECOVERY_DEFINES := BOARD_HAS_MTK_CPU BOARD_NEEDS_MTK_GETSIZE
+BOARD_RECOVERY_DEFINES := BOARD_USE_MTK_LAYOUT BOARD_MTK_BOOT_LABEL
 
 $(foreach board_define,$(BOARD_RECOVERY_DEFINES), \
   $(if $($(board_define)), \
@@ -16,7 +16,6 @@ LOCAL_SRC_FILES := \
 
 LOCAL_MODULE := libmmcutils
 LOCAL_MODULE_TAGS := eng
-LOCAL_C_INCLUDES += $(commands_recovery_local_path)
 
 include $(BUILD_STATIC_LIBRARY)
 

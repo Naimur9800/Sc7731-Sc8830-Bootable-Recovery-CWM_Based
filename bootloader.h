@@ -17,10 +17,6 @@
 #ifndef _RECOVERY_BOOTLOADER_H
 #define _RECOVERY_BOOTLOADER_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Bootloader Message
  *
  * This structure describes the content of a block in flash
@@ -38,11 +34,16 @@ extern "C" {
  * The recovery field is only written by linux and used
  * for the system to send a message to recovery or the
  * other way around.
+ *
+ * The stage field is written by packages which restart themselves
+ * multiple times, so that the UI can reflect which invocation of the
+ * package it is.  If the value is of the format "#/#" (eg, "1/3"),
+ * the UI will add a simple indicator of that status.
  */
 struct bootloader_message {
     char command[32];
     char status[32];
-    char recovery[1024];
+    char recovery[768];
 
     // The 'recovery' field used to be 1024 bytes.  It has only ever
     // been used to store the recovery command line, so 768 bytes
@@ -58,9 +59,5 @@ struct bootloader_message {
  */
 int get_bootloader_message(struct bootloader_message *out);
 int set_bootloader_message(const struct bootloader_message *in);
-       
-#ifdef __cplusplus
-}
-#endif
 
 #endif

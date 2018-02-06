@@ -22,7 +22,6 @@
 
 #include "sysdeps.h"
 #include "fdevent.h"
-#include "fuse_adb_provider.h"
 
 #define  TRACE_TAG  TRACE_SERVICES
 #include "adb.h"
@@ -44,22 +43,43 @@ void *service_bootstrap_func(void *x)
     return 0;
 }
 
-static void sideload_host_service(int sfd, void* cookie)
+static void sideload_service(int s, void *cookie)
 {
-    char* saveptr;
-    const char* s = strtok_r(cookie, ":", &saveptr);
-    uint64_t file_size = strtoull(s, NULL, 10);
-    s = strtok_r(NULL, ":", &saveptr);
-    uint32_t block_size = strtoul(s, NULL, 10);
+    unsigned char buf[4096];
+    unsigned count = (unsigned) cookie;
+    int fd;
 
-    printf("sideload-host file size %llu block size %lu\n", file_size, block_size);
+    fprintf(stderr, "sideload_service invoked\n");
 
-    int result = run_adb_fuse(sfd, file_size, block_size);
+    fd = adb_creat(ADB_SIDELOAD_FILENAME, 0644);
+    if(fd < 0) {
+        fprintf(stderr, "failed to create %s\n", ADB_SIDELOAD_FILENAME);
+        adb_close(s);
+        return;
+    }
 
-    printf("sideload_host finished\n");
-    sleep(1);
-    exit(result == 0 ? 0 : 1);
+    while(count > 0) {
+        unsigned xfer = (count > 4096) ? 4096 : count;
+        if(readx(s, buf, xfer)) break;
+        if(writex(fd, buf, xfer)) break;
+        count -= xfer;
+    }
+
+    if(count == 0) {
+        writex(s, "OKAY", 4);
+    } else {
+        writex(s, "FAIL", 4);
+    }
+    adb_close(fd);
+    adb_close(s);
+
+    if (count == 0) {
+        fprintf(stderr, "adbd exiting after successful sideload\n");
+        sleep(1);
+        exit(0);
+    }
 }
+
 
 #if 0
 static void echo_service(int fd, void *cookie)
@@ -129,12 +149,7 @@ int service_to_fd(const char *name)
     int ret = -1;
 
     if (!strncmp(name, "sideload:", 9)) {
-        // this exit status causes recovery to print a special error
-        // message saying to use a newer adb (that supports
-        // sideload-host).
-        exit(3);
-    } else if (!strncmp(name, "sideload-host:", 14)) {
-        ret = create_service_thread(sideload_host_service, (void*)(name + 14));
+        ret = create_service_thread(sideload_service, (void*) atoi(name + 9));
 #if 0
     } else if(!strncmp(name, "echo:", 5)){
         ret = create_service_thread(echo_service, 0);

@@ -164,8 +164,6 @@ Value* StringValue(char* str);
 // Free a Value object.
 void FreeValue(Value* v);
 
-int parse_string(const char* str, Expr** root, int* error_count);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif

@@ -22,6 +22,17 @@ else
   BOARD_RECOVERY_RFS_CHECK := $(shell grep rfs $(TARGET_DEVICE_DIR)/recovery.fstab)
 endif
 
+ifneq ($(BOARD_RECOVERY_RFS_CHECK),)
+include $(CLEAR_VARS)
+LOCAL_MODULE := fat.format
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_SRC_FILES := $(LOCAL_MODULE)
+include $(BUILD_PREBUILT)
+
+endif
+
 include $(CLEAR_VARS)
 LOCAL_STATIC_LIBRARIES := libz
 LOCAL_MODULE_TAGS := optional
@@ -37,3 +48,11 @@ LOCAL_MODULE := libmake_ext4fs
 LOCAL_CFLAGS := -Dmain=make_ext4fs_main
 LOCAL_SRC_FILES := ../../../system/extras/ext4_utils/make_ext4fs_main.c
 include $(BUILD_STATIC_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := zip
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_SRC_FILES := $(LOCAL_MODULE)
+include $(BUILD_PREBUILT)

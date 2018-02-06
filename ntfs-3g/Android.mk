@@ -92,9 +92,14 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../ntfs-3g/src
 
 LOCAL_CFLAGS := -O2 -g -W -Wall -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -DHAVE_CONFIG_H
-LOCAL_MODULE := mount.ntfs
-LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
-LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_MODULE := mount.ntfs-3g
+
+# need unique module name, but binary name should be same as in vold
+# https://github.com/CyanogenMod/android_system_vold
+LOCAL_MODULE_STEM := ntfs-3g
+# LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
+# LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_MODULE_TAGS := eng
 LOCAL_STATIC_LIBRARIES := libc libfuse-lite.recovery libntfs-3g.recovery
 LOCAL_FORCE_STATIC_EXECUTABLE := true
@@ -138,10 +143,16 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/../ntfs-3g/ntfsprogs
 
 LOCAL_CFLAGS := -O2 -g -W -Wall -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -DHAVE_CONFIG_H
-LOCAL_MODULE := fsck.ntfs
-LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
-LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_MODULE := ntfsfix.recovery
+
+# need unique module name, but binary name should be same as in vold
+# https://github.com/CyanogenMod/android_system_vold
+LOCAL_MODULE_STEM := ntfsfix
+# LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
+# LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_MODULE_TAGS := eng
+#libext2_uuid: external/e2fsprogs/lib/uuid
 LOCAL_STATIC_LIBRARIES := libc libext2_uuid libfuse-lite libntfs-3g
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(BUILD_EXECUTABLE)
@@ -164,6 +175,7 @@ LOCAL_C_INCLUDES := \
 LOCAL_CFLAGS := -O2 -g -W -Wall -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -DHAVE_CONFIG_H
 LOCAL_MODULE := libntfsfix.recovery
 LOCAL_MODULE_TAGS := eng
+#libext2_uuid: external/e2fsprogs/lib/uuid
 LOCAL_STATIC_LIBRARIES := libc libext2_uuid libfuse-lite libntfs-3g
 include $(BUILD_STATIC_LIBRARY)
 
@@ -188,9 +200,14 @@ LOCAL_C_INCLUDES := \
     external/e2fsprogs/lib
 
 LOCAL_CFLAGS := -O2 -g -W -Wall -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -DHAVE_CONFIG_H
-LOCAL_MODULE := mkfs.ntfs
-LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
-LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_MODULE := mkntfs.recovery
+
+# need unique moduel name, but binary name should be same as in vold
+# https://github.com/CyanogenMod/android_system_vold
+LOCAL_MODULE_STEM := mkntfs
+# LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
+# LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
 LOCAL_MODULE_TAGS := eng
 LOCAL_STATIC_LIBRARIES := libc libfuse-lite.recovery libntfs-3g.recovery
 LOCAL_FORCE_STATIC_EXECUTABLE := true

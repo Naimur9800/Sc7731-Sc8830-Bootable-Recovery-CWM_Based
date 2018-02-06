@@ -244,10 +244,14 @@ void   kick_transport( atransport*  t );
 #if ADB_HOST
 int get_available_local_transport_index();
 #endif
+int  init_socket_transport(atransport *t, int s, int port, int local);
 void init_usb_transport(atransport *t, usb_handle *usb, int state);
 
 /* for MacOS X cleanup */
 void close_usb_devices();
+
+/* cause new transports to be init'd and added to the list */
+void register_socket_transport(int s, const char *serial, int port, int local);
 
 /* these should only be used for the "adb disconnect" command */
 void unregister_transport(atransport *t);
@@ -400,7 +404,6 @@ int connection_state(atransport *t);
 #define CS_RECOVERY   4
 #define CS_NOPERM     5 /* Insufficient permissions to communicate with the device */
 #define CS_SIDELOAD   6
-#define CS_UNAUTHORIZED 7
 
 extern int HOST;
 extern int SHELL_EXIT_NOTIFY_FD;
@@ -420,5 +423,7 @@ extern int SHELL_EXIT_NOTIFY_FD;
 
 int sendfailmsg(int fd, const char *reason);
 int handle_host_request(char *service, transport_type ttype, char* serial, int reply_fd, asocket *s);
+
+#define ADB_SIDELOAD_FILENAME "/tmp/update.zip"
 
 #endif

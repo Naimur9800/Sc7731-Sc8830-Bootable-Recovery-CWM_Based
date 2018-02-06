@@ -6,11 +6,11 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := flashutils.c
 LOCAL_MODULE := libflashutils
 LOCAL_MODULE_TAGS := optional
-LOCAL_C_INCLUDES += $(commands_recovery_local_path)
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/..
 LOCAL_STATIC_LIBRARIES := libmmcutils libmtdutils libbmlutils libcrecovery
 
 BOARD_RECOVERY_DEFINES := BOARD_BML_BOOT BOARD_BML_RECOVERY
-BOARD_RECOVERY_DEFINES += BOARD_HAS_MTK_CPU BOARD_NEEDS_MTK_GETSIZE
+BOARD_RECOVERY_DEFINES += BOARD_USE_MTK_LAYOUT BOARD_MTK_BOOT_LABEL
 
 $(foreach board_define,$(BOARD_RECOVERY_DEFINES), \
   $(if $($(board_define)), \

@@ -20,9 +20,17 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-#include <bmlutils.h>
+#include <common.h>
 
-#include "../libcrecovery/common.h"
+#define BML_UNLOCK_ALL				0x8A29		///< unlock all partition RO -> RW
+
+#ifndef BOARD_BML_BOOT
+#define BOARD_BML_BOOT              "/dev/block/bml7"
+#endif
+
+#ifndef BOARD_BML_RECOVERY
+#define BOARD_BML_RECOVERY          "/dev/block/bml8"
+#endif
 
 static int restore_internal(const char* bml, const char* filename)
 {
@@ -82,7 +90,7 @@ int cmd_bml_restore_raw_partition(const char *partition, const char *filename)
 
 int cmd_bml_backup_raw_partition(const char *partition, const char *out_file)
 {
-    char* bml;
+    const char* bml;
     if (strcmp("boot", partition) == 0)
         bml = BOARD_BML_BOOT;
     else if (strcmp("recovery", partition) == 0)
@@ -104,9 +112,8 @@ int cmd_bml_backup_raw_partition(const char *partition, const char *out_file)
     unsigned sz = 0;
     unsigned i;
     int ret = -1;
-    char *in_file = bml;
 
-    in  = fopen ( in_file,  "r" );
+    in  = fopen ( bml,  "r" );
     if (in == NULL)
         goto ERROR3;
 

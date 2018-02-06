@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
+#include <stdio.h> // for legacy properties (rename)
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -27,18 +26,18 @@
 #include "common.h"
 #include "install.h"
 #include "mincrypt/rsa.h"
-#include "minuictr/minui.h"
+#include "minui/minui.h"
 #include "minzip/SysUtil.h"
 #include "minzip/Zip.h"
 #include "mtdutils/mounts.h"
 #include "mtdutils/mtdutils.h"
 #include "roots.h"
 #include "verifier.h"
-#include "recovery_ui.h"
 
 #include "cutils/properties.h"
 
 #include "extendedcommands.h"
+#include "recovery_settings.h"
 
 #include "propsrvc/legacy_property_service.h" // legacy update-binary compatibility
 
@@ -49,6 +48,15 @@
 #define ASSUMED_UPDATE_BINARY_NAME  "META-INF/com/google/android/update-binary"
 #define PUBLIC_KEYS_FILE "/res/keys"
 
+// Default allocation of progress bar segments to operations
+static const int VERIFICATION_PROGRESS_TIME = 60;
+static const float VERIFICATION_PROGRESS_FRACTION = 0.25;
+static const float DEFAULT_FILES_PROGRESS_FRACTION = 0.4;
+static const float DEFAULT_IMAGE_PROGRESS_FRACTION = 0.1;
+
+// Use legacy property environment if old update-binary
+// https://github.com/CyanogenMod/android_bootable_recovery/commit/2371d9dcd5d44b6954f5981e90e409fbd3ac1b02
+// https://github.com/CyanogenMod/android_bootable_recovery/commit/da36597955e30b8139f2c64ecb9687fac898c1b2
 static const char *DEV_PROP_PATH = "/dev/__properties__";
 static const char *DEV_PROP_BACKUP_PATH = "/dev/__properties_backup__";
 static bool legacy_props_env_initd = false;
@@ -91,7 +99,6 @@ static int unset_legacy_props() {
 // If the package contains an update binary, extract it and run it.
 static int
 try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
-
     const ZipEntry* binary_entry =
             mzFindZipEntry(zip, ASSUMED_UPDATE_BINARY_NAME);
     if (binary_entry == NULL) {
@@ -221,14 +228,16 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
 
     pid_t pid = fork();
     if (pid == 0) {
-        umask(022);
+        // set the env for UPDATE_PACKAGE (the source zip) for update-binary. This allows shell scripts to use the source zip.
+		// https://github.com/CyanogenMod/android_bootable_recovery/commit/20b516a408adebcad06e03f12516e70b8998c38f
+        setenv("UPDATE_PACKAGE", path, 1);
         close(pipefd[0]);
-        execv(binary, (char* const*)args);
+        execve(binary, (char* const*)args, environ);
         fprintf(stdout, "E:Can't run %s (%s)\n", binary, strerror(errno));
         _exit(-1);
     }
     close(pipefd[1]);
-    
+
     *wipe_cache = 0;
 
     char buffer[1024];
@@ -259,6 +268,8 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
             fflush(stdout);
         } else if (strcmp(command, "wipe_cache") == 0) {
             *wipe_cache = 1;
+        } else if (strcmp(command, "clear_display") == 0) {
+            // not needed in PhilZ Touch;
         } else {
             LOGE("unknown command [%s]\n", command);
         }
@@ -278,60 +289,27 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     }
 
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        if (WEXITSTATUS(status) != 7) {
-           LOGE("Installation error in %s\n(Status %d)\n", path, WEXITSTATUS(status));
-        } else {
-           LOGE("Failed to install %s\n", path);
-           LOGE("Please take note of all the above lines for reports\n");
-        }
+        LOGE("Error in %s\n(Status %d)\n", path, WEXITSTATUS(status));
         return INSTALL_ERROR;
     }
-    
+
     return INSTALL_SUCCESS;
 }
 
 static int
-really_install_package(const char *path, int* wipe_cache, bool needs_mount)
+really_install_package(const char *path, int* wipe_cache)
 {
-	int ret = 0;
-	
     ui_set_background(BACKGROUND_ICON_INSTALLING);
     ui_print("Finding update package...\n");
+    // Give verification half the progress bar...
+    // ui_reset_progress();
+    // ui_show_progress(VERIFICATION_PROGRESS_FRACTION, VERIFICATION_PROGRESS_TIME);
     ui_show_indeterminate_progress();
-    
-    // Resolve symlink in case legacy /sdcard path is used
-    // Requires: symlink uses absolute path
-    char new_path[PATH_MAX];
-    if (strlen(path) > 1) {
-        char *rest = strchr(path + 1, '/');
-        if (rest != NULL) {
-            int readlink_length;
-            int root_length = rest - path;
-            char *root = (char *)malloc(root_length + 1);
-            strncpy(root, path, root_length);
-            root[root_length] = 0;
-            readlink_length = readlink(root, new_path, PATH_MAX);
-            if (readlink_length > 0) {
-                strncpy(new_path + readlink_length, rest, PATH_MAX - readlink_length);
-                path = new_path;
-            }
-            free(root);
-        }
-    }
 
     LOGI("Update location: %s\n", path);
 
-    if (path && needs_mount) {
-        if (path[0] == '@') {
-            ensure_path_mounted(path+1);
-        } else {
-            ensure_path_mounted(path);
-        }
-    }
-
-    MemMapping map;
-    if (sysMapFile(path, &map) != 0) {
-        LOGE("failed to map file\n");
+    if (ensure_path_mounted(path) != 0) {
+        LOGE("Can't mount %s\n", path);
         return INSTALL_CORRUPT;
     }
 
@@ -339,7 +317,7 @@ really_install_package(const char *path, int* wipe_cache, bool needs_mount)
 
     int err;
 
-    if (signature_check_enabled) {
+    if (signature_check_enabled.value) {
         int numKeys;
         Certificate* loadedKeys = load_keys(PUBLIC_KEYS_FILE, &numKeys);
         if (loadedKeys == NULL) {
@@ -347,55 +325,35 @@ really_install_package(const char *path, int* wipe_cache, bool needs_mount)
             return INSTALL_CORRUPT;
         }
         LOGI("%d key(s) loaded from %s\n", numKeys, PUBLIC_KEYS_FILE);
-        
-        set_perf_mode(1);
 
-        // Give verification half the progress bar...
         ui_print("Verifying update package...\n");
-        ui_show_progress(
-                VERIFICATION_PROGRESS_FRACTION,
-                VERIFICATION_PROGRESS_TIME);
 
-        err = verify_file(map.addr, map.length, loadedKeys, numKeys);
+        err = verify_file(path, loadedKeys, numKeys);
         free(loadedKeys);
         LOGI("verify_file returned %d\n", err);
         if (err != VERIFY_SUCCESS) {
             LOGE("signature verification failed\n");
-            sysReleaseMap(&map);
-            ui_show_text(1);
-            if (!confirm_selection("Install Untrusted Package?", "Yes - Install untrusted zip"))
-                ret = INSTALL_CORRUPT;
-                goto out;
+            return  INSTALL_CORRUPT;
         }
     }
 
     /* Try to open the package.
      */
     ZipArchive zip;
-    err = mzOpenZipArchive(map.addr, map.length, &zip);
+    err = mzOpenZipArchive(path, &zip);
     if (err != 0) {
         LOGE("Can't open %s\n(%s)\n", path, err != -1 ? strerror(err) : "bad");
-        sysReleaseMap(&map);
-        ret = INSTALL_CORRUPT;
-        goto out;
+        return INSTALL_CORRUPT;
     }
 
     /* Verify and install the contents of the package.
      */
     ui_print("Installing update...\n");
-    int result = try_update_binary(path, &zip, wipe_cache);
-
-    sysReleaseMap(&map);
-
-out:
-    set_perf_mode(0);
-    ui_set_background(BACKGROUND_ICON_NONE);
-    return ret;
+    return try_update_binary(path, &zip, wipe_cache);
 }
 
 int
-install_package(const char* path, int* wipe_cache, const char* install_file,
-                bool needs_mount)
+install_package(const char* path, int* wipe_cache, const char* install_file)
 {
     FILE* install_log = fopen_path(install_file, "w");
     if (install_log) {
@@ -405,12 +363,15 @@ install_package(const char* path, int* wipe_cache, const char* install_file,
         LOGE("failed to open last_install: %s\n", strerror(errno));
     }
     int result;
-    if (setup_install_mounts() != 0) {
+    if (strstr(path, AROMA_FM_PATH) == NULL && setup_install_mounts() != 0) {
+        // do not umount any partition when starting up aroma file manager from default location
+        // in some devices, aroma have trouble mounting /system and /data if they are unmounted at this stage
         LOGE("failed to set up expected mounts for install; aborting\n");
         result = INSTALL_ERROR;
     } else {
-        result = really_install_package(path, wipe_cache, needs_mount);
+        result = really_install_package(path, wipe_cache);
     }
+
 #ifdef ENABLE_LOKI
     if (result == INSTALL_SUCCESS && loki_support_enabled() > 0) {
         ui_print("Checking if loki-fying is needed\n");
@@ -423,6 +384,7 @@ install_package(const char* path, int* wipe_cache, const char* install_file,
         fputc('\n', install_log);
         fclose(install_log);
     }
+
     return result;
 }
 
